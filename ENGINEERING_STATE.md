@@ -45,6 +45,7 @@ Last test result: "pytest = 92 passed (rbac 11, auth 14, health 9, root 4, confi
 | M007 | `0f50ada` |
 | M008 | `a7cf3c5` |
 | M009 | `1f9996c` |
+| M010 | `c477bad` |
 
 ## Notes / findings
 
