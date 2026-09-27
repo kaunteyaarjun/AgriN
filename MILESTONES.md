@@ -27,7 +27,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M010 | RBAC foundation (role enum + permission dependency) | P0 | M009 | done |
 | **Farmer/Farm/Plot domain** | | | | |
 | M011 | Farmer profile model & migration | P0 | M008 | done |
-| M012 | Farmer CRUD API | P0 | M011, M010 | not-started |
+| M012 | Farmer CRUD API | P0 | M011, M010 | done |
 | M013 | Farm model & migration (geo as JSONB) | P0 🔒 | M011 | not-started |
 | M014 | Farm CRUD API + ownership authorization | P0 | M013, M010 | not-started |
 | M015 | Plot model & migration | P0 | M013 | not-started |
@@ -1407,3 +1407,159 @@ no demographics beyond the columns listed (YAGNI).
   it ("no relation" confirmed), `upgrade` restores; `alembic current`
   = `0003 (head)`.
 - `tests/test_migrations.py` revision pins updated 0002 → 0003.
+
+---
+
+### M012 — Farmer CRUD API
+
+**Priority:** P0 **Depends On:** M011, M010
+**Status:** done
+
+#### Objective
+`/api/v1/farmers` CRUD with the full authorization matrix on top of
+M010's `require_role`/`CurrentUserDep`: farmers manage **their own**
+profile, admins manage everything, extension officers read everything.
+
+#### Why This Milestone Exists
+First real domain API — it exercises auth (M009) + RBAC (M010) + the
+farmer model (M011) together, establishes the ownership-check pattern
+that M014/M016 reuse for farms/plots, and gives the dashboards (M047,
+M052) data to render.
+
+#### Files Expected to Be Created
+- `src/api/v1/farmers.py` (schemas + router)
+
+#### Files Expected to Be Modified
+- `src/core/errors.py` (`Conflict` 409)
+- `src/api/v1/__init__.py` (mount router)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None (reads/writes `farmers` from M011).
+
+#### API Changes
+All under `/api/v1/farmers`; list responses as
+`{items: [...], total, limit, offset}`; farmer object =
+`{id, user_id, full_name, phone, village, district, created_at, updated_at}`.
+
+| Actor | POST | GET list | GET one | PATCH | DELETE |
+|---|---|---|---|---|---|
+| anonymous | 401 | 401 | 401 | 401 | 401 |
+| farmer, own profile | 201 (self) | 403 | 200 | 200 | 403 |
+| farmer, other's | 403 (mismatched user_id) | 403 | 404 | 404 | 404 |
+| extension_officer | 403 | 200 | 200 | 403 | 403 |
+| admin | 201 (any farmer-user) | 200 | 200 | 200 | 200 |
+
+- **POST** (admin): body `user_id` must reference an existing user with
+  `role=farmer` (missing user → 404, wrong role → 409, already has a
+  profile → 409). **POST** (self, role=farmer): `user_id` forced to own id;
+  provided `user_id` different from own → 403; already has profile → 409.
+  Returns 201.
+- **GET list**: `limit` (default 50, max 100), `offset` (>=0).
+- **Ownership**: a farmer can read/update only profiles whose `user_id`
+  equals theirs — non-owned → **404** (no existence leak); owned but
+  forbidden action → **403**.
+- **PATCH**: partial body, at least one field; `full_name` 1–200,
+  `phone` loose `^\+?[0-9()\s-]{5,32}$`, `village`/`district` ≤120.
+- **DELETE**: admin only; also removes the row (its `users` account and
+  auth tokens are untouched — cascade runs the other direction).
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/core/errors.py`: `Conflict` (409 `conflict`).
+3. `src/api/v1/farmers.py`: `FarmerCreate`/`FarmerPatch`/`FarmerRead`
+   pydantic schemas; router with the five endpoints; helper
+   `_get_authorized_farmer(session, farmer_id, user)` → row or
+   404/403 per matrix; role checks via `require_role`, ownership via
+   `user_id == current_user.id`.
+4. Mount in `src/api/v1/__init__.py` (tag `farmers`).
+5. Tests `tests/api/test_farmers.py` (own `_db`/seeded-users fixtures):
+   see lists below.
+
+#### Acceptance Criteria
+- [x] Full matrix above passes against real dev Postgres.
+- [x] Anonymous requests to every endpoint → 401 (before any role logic).
+- [x] Farmer cannot read/modify/delete another farmer's profile (404) and
+      cannot create for someone else (403).
+- [x] Admin can create only for existing `role=farmer` users without a
+      profile (404/409 otherwise).
+- [x] PATCH validates field rules; empty patch → 422.
+- [x] List pagination bounded (limit max 100) and admin/officer-only.
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+- Schema validation: full_name bounds, phone pattern, empty-patch
+  rejection, limit clamp (no DB).
+
+#### Integration Tests Required
+- The complete matrix (anonymous/farmer-self/farmer-other/officer/admin ×
+  five endpoints) + 409 duplicate-profile + admin wrong-role target +
+  admin missing-user target, against dev Postgres.
+
+#### Security Checks Required
+- [x] 401 strictly precedes role/ownership checks.
+- [x] Ownership enforced in the query path (lookup by id **and**
+      authorization), never client-supplied filters.
+- [x] Non-owned resources → 404 (no IDOR existence oracle) — logged for
+      M017's cross-resource audit.
+- [x] Validation rejects oversized/invalid fields before the DB.
+
+#### Performance Checks Required
+- [x] List = one SELECT + one COUNT; single-row paths = one SELECT;
+      no N+1.
+
+#### Memory/Resource Checks Required
+None significant (per-request session).
+
+#### Failure Scenarios to Handle
+- Duplicate profile → 409, no partial rows.
+- Target user missing / wrong role at create → 404 / 409, clean bodies.
+- Concurrent creates for the same user → second commit hits the
+  `user_id` UNIQUE constraint → 409 (IntegrityError mapped).
+- Malformed UUID in path → FastAPI 422 (existing handler shape).
+
+#### Rollback Strategy
+Remove `src/api/v1/farmers.py` + router mount; `farmers` table (M011)
+unaffected.
+
+#### Verification Commands
+```bash
+uv run pytest tests/api/test_farmers.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+# live: curl matrix with admin/farmer/officer tokens
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No user/registration endpoints (accounts stay seed-created), no bulk
+import/export, no soft-delete, no farm/plot linkage (M013+), no listing
+of user accounts (only farmer profiles).
+
+#### Verification & Notes (added on completion)
+- Gate PASSED: ruff format OK, ruff check OK, mypy 47 files OK,
+  pytest **115 passed / 0 skipped** (15 new: schema validation ×2, anon
+  401 sweep, self-create/read, cross-create 403, duplicate 409, admin
+  create 201/404/409-wrong-role, officer create 403, list matrix +
+  bounds 422, get matrix, patch matrix, delete matrix);
+  bandit on `src/api` + `errors.py` = 0 findings.
+- Live matrix (uvicorn + dev DB) **12/12 exactly per spec table**:
+  self-create 201, anon 401, owner-GET 200, other-GET 404, officer-GET
+  200, officer-PATCH 403, other-PATCH 404, admin-PATCH 200, officer-list
+  total=1, farmer-list 403, admin-DELETE 204, GET-after-delete 404.
+- **Finding (data loss):** `tests/test_migrations.py`'s round-trip runs
+  `downgrade base` → **reinitializes the whole schema after every gate
+  run**, destroying all seeded dev accounts (this caused the confusing
+  mid-verification 401s/405s). Rule: seed demo users **after the final
+  gate run**, never before.
+- **Finding (fixed):** `tests/models/test_farmer.py` teardowns used
+  unscoped `DELETE FROM users` (wiped every account); now scoped to
+  seeded ids (FK cascade cleans farmer rows). Same hygiene verified in
+  the other fixtures.

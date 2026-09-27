@@ -8,10 +8,12 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from src.api.v1.auth import router as auth_router
+from src.api.v1.farmers import router as farmers_router
 
 api_router = APIRouter(prefix="/api/v1")
 
 api_router.include_router(auth_router)
+api_router.include_router(farmers_router)
 
 
 @api_router.get("/ping", tags=["meta"])

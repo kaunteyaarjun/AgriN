@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M012 — Farmer CRUD API"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011"]
-Current implementation status: "M011 done: farmers table at Alembic revision 0003 (hand-written 0003_farmers.py) — surrogate uuid PK, user_id uuid NOT NULL UNIQUE FK -> users(id) ON DELETE CASCADE (1:1 profile, no orphan PII), full_name varchar(200) NOT NULL, phone/village/district nullable, tz timestamps; src/models/farmer.py Farmer model exported from src.models. No endpoints (M012)."
+Current milestone: "M013 — Farm model & migration (geo as JSONB) [LOCK: human checkpoint required before implementing]"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012"]
+Current implementation status: "M012 done: /api/v1/farmers CRUD (POST self/admin create, GET list admin+officer with limit/offset, GET/PATCH owner-or-privileged, DELETE admin-only) with server-side ownership (non-owner farmer -> 404, no IDOR oracle), FarmerCreate/FarmerPatch/FarmerRead schemas (phone pattern, empty-patch 422), Conflict 409 error class; mounted in api/v1. Pattern set for M014/M016 ownership checks."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
@@ -15,9 +15,9 @@ Known resource/memory issues:
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
 Blocked tasks: []
-Next milestone: "M012 — Farmer CRUD API"
-Last verification: "M011 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 45 files OK, pytest 100 passed / 0 skipped (8 new farmer: metadata/unique/FK-cascade asserts, round trip, duplicate + orphan IntegrityErrors, cascade delete); bandit on src/models = 0 findings. Live: upgrade head -> \\d farmers matches spec (farmers_user_id_key UNIQUE, farmers_user_id_fkey ON DELETE CASCADE), downgrade 0002 drops it, upgrade restores; alembic current = 0003 (head)."
-Last test result: "pytest = 100 passed (farmer 8, rbac 11, auth 14, health 9, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, migrations 2, smoke 2)"
+Next milestone: "M013 — Farm model & migration (geo as JSONB) — LOCKED, needs human checkpoint (geo shape decision) before implementation"
+Last verification: "M012 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 47 files OK, pytest 115 passed / 0 skipped (15 new farmer-CRUD incl. full authz matrix); bandit on src/api + errors.py = 0 findings. Live uvicorn matrix 12/12 per spec (201/401/200/404/200/403/404/200/list-403/204/404)."
+Last test result: "pytest = 115 passed (farmers 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farmer-model 8, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -100,3 +100,13 @@ Last test result: "pytest = 100 passed (farmer 8, rbac 11, auth 14, health 9, ro
 - 2026-09-27 (M011): `.gitignore` currently carries an uncommitted local
   edit (`.github` appended, no trailing newline) — not part of M011's
   commit; confirm intent (ignore or track `.github/`) before committing it.
+- 2026-09-27 (M012): **Every gate run destroys seeded dev data** —
+  `tests/test_migrations.py` round-trip executes `downgrade base` +
+  `upgrade head`, reinitializing the whole schema (accounts included).
+  Always seed demo users/fixtures **after** the final gate run; a re-gate
+  after seeding invalidates the seeds (caused mid-verification 401/405
+  confusion). Kept as-is (the round-trip is the point of that test).
+- 2026-09-27 (M012): Fixed a second data-wipe source: `test_farmer.py`
+  teardowns used unscoped `DELETE FROM users`; now scoped to seeded ids
+  (FK cascade cleans their farmer rows). House rule: test cleanup must
+  always scope deletes to rows the test created.

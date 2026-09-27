@@ -84,6 +84,12 @@ class PermissionDenied(AppError):
     message = "You do not have permission to perform this action."
 
 
+class Conflict(AppError):
+    status_code = 409
+    error_code = "conflict"
+    message = "The request conflicts with the current state."
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach the AgriN exception handlers to ``app``."""
 
