@@ -44,6 +44,7 @@ Last test result: "pytest = 81 passed (auth 14, health 9, root 4, config 8, db 4
 | M006 | `d303bb0` |
 | M007 | `0f50ada` |
 | M008 | `a7cf3c5` |
+| M009 | `1f9996c` |
 
 ## Notes / findings
 
