@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M016 — Plot CRUD API + ownership authorization"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015"]
-Current implementation status: "M015 done: plots table at Alembic revision 0005 — uuid PK, farm_id FK -> farms(id) ON DELETE CASCADE with btree ix_plots_farm_id, name varchar(120) UNIQUE(farm_id,name), area_hectares numeric(10,2) NULL, geo geometry(Geometry,4326) NULL with GIST idx_plots_geo; Plot model exported (repr hides geo); migration pin moved to 0005. No endpoints (M016), no crop/stage columns (M018)."
+Current milestone: "M017 — Cross-resource authorization audit (IDOR pass)"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016"]
+Current implementation status: "M016 done: /api/v1/farms/{farm_id}/plots CRUD (nested routes) — parent-farm authz via M014's _authorized_farm (owner farmer/admin, officer read-only, non-owner farmer 404 no oracle), plot ids always scoped to URL farm (cross-farm 404), duplicate (farm_id,name) -> 409, farmer_id/farm_id immutable, GeoJSON payloads reused from M014, plot-within-farm containment via ST_Covers (outside -> 422 pre-write, NULL farm boundary -> skip)."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
@@ -15,9 +15,9 @@ Known resource/memory issues:
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
 Blocked tasks: []
-Next milestone: "M016 — Plot CRUD API + ownership authorization"
-Last verification: "M015 gate PASSED with live dev DB (65432, PostGIS 3.4): ruff format OK, ruff check OK, mypy 55 files OK, pytest 152 passed / 0 skipped (11 new plot); bandit on src/models + 0005 migration = 0 findings. Live: alembic current 0005 (head), downgrade 0004 drops plots only (farms intact), \\d plots = geometry(Geometry,4326) + GIST idx_plots_geo + btree ix_plots_farm_id + unique(farm_id,name) + FK CASCADE."
-Last test result: "pytest = 152 passed (plot 11, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, migrations 2, smoke 2)"
+Next milestone: "M017 — Cross-resource authorization audit (IDOR pass)"
+Last verification: "M016 gate PASSED with live dev DB (65432, PostGIS 3.4): ruff format OK, ruff check OK, mypy 57 files OK, pytest 165 passed / 0 skipped (13 new plot-API); bandit on src/api/v1/plots.py = 0 findings. Live uvicorn matrix 29/29 (containment 422/skip, cross-farm 404, full role matrix) + live artifact cleanup before final gate."
+Last test result: "pytest = 165 passed (plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)

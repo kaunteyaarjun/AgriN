@@ -31,7 +31,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M013 | Farm model & migration (geo as JSONB) | P0 🔒 | M011 | done |
 | M014 | Farm CRUD API + ownership authorization | P0 | M013, M010 | done |
 | M015 | Plot model & migration | P0 | M013 | done |
-| M016 | Plot CRUD API + ownership authorization | P0 | M015, M010 | not-started |
+| M016 | Plot CRUD API + ownership authorization | P0 | M015, M010 | done |
 | M017 | Cross-resource authorization audit (IDOR pass) | P0 | M012, M014, M016 | not-started |
 | **Farm Digital Twin** | | | | |
 | M018 | Farm State schema (crop, stage, planting date, signal cache) | P0 | M015 | not-started |
@@ -2003,3 +2003,147 @@ M016's service layer, no area computation from geometry.
   only (`farms` intact); `\d plots` matches spec exactly —
   `geometry(Geometry,4326)`, `idx_plots_geo` GIST, `ix_plots_farm_id`
   btree, `plots_farm_id_name_key` unique, FK `ON DELETE CASCADE`.
+
+---
+
+### M016 — Plot CRUD API + Ownership Authorization
+
+**Priority:** P0 **Depends On:** M015, M010
+**Status:** done
+
+#### Objective
+`/api/v1/farms/{farm_id}/plots` CRUD (nested routes) with GeoJSON
+payloads, reusing M014's farm authorization helper and adding the
+**plot-within-farm containment check** deferred from M015
+(`ST_Covers(farm.geo, plot.geo)`).
+
+#### Why This Milestone Exists
+Completes the spatial data entry path (farm → plot), unlocks M017's
+cross-resource IDOR audit, and is the write side of everything M018+
+reads.
+
+#### Files Expected to Be Created
+- `src/api/v1/plots.py` (schemas + router)
+- `tests/api/test_plots.py`
+
+#### Files Expected to Be Modified
+- `src/api/v1/__init__.py` (mount router, tag `plots`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None (uses `plots` from M015).
+
+#### API Changes
+Nested under `/api/v1/farms/{farm_id}/plots`; plot object
+`{id, farm_id, name, area_hectares, geo, created_at, updated_at}`;
+list envelope `{items, total, limit, offset}`.
+
+| Actor | POST | GET list | GET one | PATCH | DELETE |
+|---|---|---|---|---|---|
+| anonymous | 401 | 401 | 401 | 401 | 401 |
+| farmer, own farm | 201 | 200 (own farm only) | 200 | 200 | 403 |
+| farmer, other's | 404 | 404 | 404 | 404 | 404 |
+| extension_officer | 403 | 200 | 200 | 403 | 403 |
+| admin | 201 | 200 | 200 | 200 | 200 |
+
+- Authorization for every endpoint starts with M014's
+  `_authorized_farm` on the URL's `farm_id` (non-owner farmer → 404,
+  no oracle) — plots inherit the parent farm's ownership rules.
+- Plot lookup is scoped `WHERE id = plot_id AND farm_id = farm_id` →
+  a plot id from another farm → 404 (never leaks cross-farm).
+- Duplicate plot name **within the farm** → 409; same name in another
+  farm → 201 (DB unique scope does the work).
+- **Containment (M015 deferral):** when both `plot.geo` is provided and
+  the parent farm has a non-NULL boundary, `ST_Covers` must be true or
+  the request → 422 (`validation_failed`, nothing persisted). Farm
+  boundary NULL → check skipped (cannot enforce what isn't mapped).
+- Reuses `PlotCreate`/`PlotPatch`-style pydantic validation from
+  `src/api/v1/farms.py` (`_validate_geojson`, ≥1-field patch,
+  numeric(10,2) area, immutable `farm_id`).
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/api/v1/plots.py`: import `_validate_geojson`, `_row_to_read`
+   pattern, and `_authorized_farm` from `.farms`; containment helper via
+   one `SELECT ST_Covers(...)`; mount.
+3. `tests/api/test_plots.py`: matrix + containment + geo round trip
+   (fixtures seed users/profiles/farms directly, scoped cleanup).
+
+#### Acceptance Criteria
+- [x] Full matrix above passes on real dev Postgres.
+- [x] GeoJSON round trip through the API; invalid geo → 422.
+- [x] Plot outside farm boundary → 422 with nothing persisted; inside →
+      201; unmapped farm accepts any valid geo.
+- [x] Duplicate `(farm_id, name)` → 409; cross-farm plot id → 404;
+      non-owner farmer → 404 on every verb.
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+- Empty `PlotPatch` → ValidationError; geo validator reuse covered via
+  API 422 path (already unit-tested in M014).
+
+#### Integration Tests Required
+- Complete actor × endpoint matrix against dev Postgres; containment
+  pass/fail/skip cases; API geo round trip.
+
+#### Security Checks Required
+- [x] 401 before role/ownership logic; parent-farm authz resolved
+      server-side (M017 input).
+- [x] Cross-farm plot ids → 404 (no existence oracle).
+- [x] GeoJSON size guard inherited (`MAX_GEOJSON_CHARS`).
+
+#### Performance Checks Required
+- [x] List = parent authz (1) + COUNT (1) + page SELECT (1) — constant
+      regardless of plot count; single ops ≤ 4 queries (authz, plot row,
+      optional ST_Covers, write).
+
+#### Memory/Resource Checks Required
+None significant (payload cap inherited).
+
+#### Failure Scenarios to Handle
+- Concurrent duplicate `(farm_id, name)` → IntegrityError → 409.
+- Farm boundary changed after plots exist (M014 could shrink it) →
+  revalidation of existing plots is NOT this milestone (documented
+  below); only incoming plot writes are checked.
+- Malformed geometry → 422 pre-write; containment check never sees it.
+
+#### Rollback Strategy
+Remove `src/api/v1/plots.py` + router mount; `plots` table (M015)
+unaffected.
+
+#### Verification Commands
+```bash
+uv run pytest tests/api/test_plots.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+# live: curl matrix + containment cases
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No area computation from geometry, no revalidation of existing plots
+when a farm boundary shrinks (future: farm-state/service work), no
+crop/stage fields (M018), no plot-in-plot or MultiPolygon containment
+refinements beyond `ST_Covers`.
+
+#### Verification & Notes (added on completion)
+- Gate PASSED: ruff format OK, ruff check OK, mypy 57 files OK,
+  pytest **165 passed / 0 skipped** (13 new plot-API); bandit on
+  `src/api/v1/plots.py` = 0 findings.
+- **Live uvicorn matrix 29/29** (`live_m016.py`): 401s, owner create +
+  geo round trip, containment 422 (outside) / skip (unmapped farm),
+  stranger 404 ×5, officer read-only (403/200/403/403), admin full,
+  dup-name 409 scoped per farm, cross-farm plot id 404, patch matrix +
+  rejected geo leaves boundary untouched, delete matrix, and live
+  artifact cleanup (farms + profiles deleted before the final gate —
+  M014 lesson applied).
+- Containment runs as one `SELECT ST_Covers(farm.geo, ST_GeomFromGeoJSON(...))`
+  — NULL farm boundary yields NULL → treated as "skip" (cannot enforce
+  what isn't mapped); `covered is False` → 422 pre-write.
