@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M010 — RBAC foundation (role enum + permission dependency)"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009"]
-Current implementation status: "M009 done: POST /api/v1/auth/login (anti-enumeration 401, dummy-hash verify, 403 account_disabled only after password check) + POST /api/v1/auth/refresh (type=refresh, user must exist+active); JWT access 15m/refresh 7d (HS256, 5s leeway, fail-fast secret) in src/core/security.py; get_current_user dependency (HTTPBearer auto_error=False, one PK SELECT) in src/api/deps.py. Rate limiting & refresh revocation deferred to M055."
+Current milestone: "M011 — Farmer profile model & migration"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010"]
+Current implementation status: "M010 done: RBAC foundation in src/api/deps.py — require_role(*roles) dependency factory (default-deny, fail-fast ValueError on zero roles, 401-before-403 via CurrentUserDep, static 403 permission_denied body, role always read from the DB-backed user so changes apply without re-issuing tokens) plus CurrentUserDep and AdminUserDep aliases. No gated production routes yet (first: M012+)."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
@@ -15,9 +15,9 @@ Known resource/memory issues:
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
 Blocked tasks: []
-Next milestone: "M010 — RBAC foundation (role enum + permission dependency)"
-Last verification: "M009 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 41 files OK, pytest 81 passed / 0 skipped (22 new: 8 JWT unit + 14 auth API); bandit on src/api + security.py + errors.py = 0 findings. Live uvicorn: login 200 bearer tokens, wrong-pw & unknown-email identical 401 invalid_credentials, refresh 200, access-at-refresh 401 invalid_token, routes in /openapi.json."
-Last test result: "pytest = 81 passed (auth 14, health 9, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, migrations 2, smoke 2)"
+Next milestone: "M011 — Farmer profile model & migration"
+Last verification: "M010 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 42 files OK, pytest 92 passed / 0 skipped (11 new RBAC: route×role matrix, same-token role-change re-evaluation, fail-fast ValueError, wrong-scheme 401, deactivated-user 401); bandit on src/api = 0 findings. Live uvicorn: /health 200, login regression OK (bearer), route surface unchanged (M010 adds no endpoints)."
+Last test result: "pytest = 92 passed (rbac 11, auth 14, health 9, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -88,3 +88,10 @@ Last test result: "pytest = 81 passed (auth 14, health 9, root 4, config 8, db 4
   leaves the child python.exe listening on the port — kill by the PID from
   `netstat -ano | Select-String ":8000.*LISTENING"` or the stale server
   serves old code (caused a confusing live 404).
+- 2026-09-27 (M010): dev DB `users` table was empty at live verification —
+  the container had been recreated between sessions without a named volume
+  for that data path. Seeded rows do not survive; re-seed demo users after
+  any container recreation (tests unaffected: they seed/clean their own).
+- 2026-09-27 (M010): route-handler gates must use the no-default form
+  `Annotated[User, Depends(require_role(...))]` — putting `Depends(...)`
+  in a parameter *default* trips ruff B008.

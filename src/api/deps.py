@@ -1,14 +1,14 @@
 """Reusable FastAPI dependencies for authentication and authorization (M009+).
 
 ``get_current_user`` resolves ``Authorization: Bearer <access token>`` to a
-``User``. Missing, malformed, expired, tampered or wrong-type credentials
-all yield a clean 401 — never a 500. Role checks (``require_role``) arrive
-with M010 and build on this dependency.
+``User``. ``require_role`` (M010) layers role authorization on top of it:
+default-deny, 401 before 403, role always read from the DB row.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 
 from fastapi import Depends
@@ -16,9 +16,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.db import get_db
-from src.core.errors import InvalidToken, NotAuthenticated
+from src.core.errors import InvalidToken, NotAuthenticated, PermissionDenied
 from src.core.security import decode_token
-from src.models import User
+from src.models import User, UserRole
 
 _bearer = HTTPBearer(auto_error=False)
 """``auto_error=False``: we raise our own 401 (FastAPI's default would 403)."""
@@ -47,3 +47,32 @@ async def get_current_user(
     if user is None or not user.is_active:
         raise InvalidToken("The account for this token no longer exists or is active.")
     return user
+
+
+CurrentUserDep = Annotated[User, Depends(get_current_user)]
+"""Any authenticated (active) user, regardless of role."""
+
+
+def require_role(*roles: UserRole) -> Callable[..., Awaitable[User]]:
+    """Dependency factory: allow only the listed roles (M010, default-deny).
+
+    No hierarchy — an ``admin`` passes only if its role is named. Zero roles
+    fails fast with ``ValueError`` at route-definition time. The role is read
+    from the DB-backed user (never from token claims), so role changes apply
+    on the next request. Returns the ``User`` so routes get authn + authz in
+    a single annotation: ``user: Annotated[User, Depends(require_role(...))]``
+    """
+    if not roles:
+        raise ValueError("require_role() needs at least one role")
+    allowed = frozenset(roles)
+
+    async def _role_check(user: CurrentUserDep) -> User:
+        if user.role not in allowed:
+            raise PermissionDenied()
+        return user
+
+    return _role_check
+
+
+AdminUserDep = Annotated[User, Depends(require_role(UserRole.admin))]
+"""Shortcut for admin-only routes (first real consumer: M052)."""

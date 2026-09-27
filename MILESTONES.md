@@ -24,7 +24,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M007 | Health/readiness endpoints | P0 | M006 | done |
 | M008 | User model + password hashing | P0 | M004 | done |
 | M009 | Auth: login/token issuance (JWT) | P0 | M008, M006 | done |
-| M010 | RBAC foundation (role enum + permission dependency) | P0 | M009 | not-started |
+| M010 | RBAC foundation (role enum + permission dependency) | P0 | M009 | done |
 | **Farmer/Farm/Plot domain** | | | | |
 | M011 | Farmer profile model & migration | P0 | M008 | not-started |
 | M012 | Farmer CRUD API | P0 | M011, M010 | not-started |
@@ -1119,3 +1119,144 @@ production hardening item for SECURITY.md/M055), no rate limiting (M055).
   future dependencies.
 - Deferred to M055 (flagged here): login rate limiting, refresh-token
   revocation/logout.
+
+---
+
+### M010 — RBAC Foundation (role enum + permission dependency)
+
+**Priority:** P0 **Depends On:** M009
+**Status:** done
+
+#### Objective
+Turn M009's authentication into authorization with one reusable dependency
+factory: `require_role(*roles)` — unauthenticated → 401, authenticated but
+wrong role → 403 `permission_denied`, allowed role → the `User`. Plus the
+`CurrentUserDep` alias for plain "any signed-in user" routes. The role enum
+itself (`UserRole`: farmer / extension_officer / admin) already exists from
+M008.
+
+#### Why This Milestone Exists
+Every privileged route downstream (farm/plot ownership in M014/M016,
+extension-officer workflows, admin oversight in M052) needs default-deny
+access control. Building it once here means later milestones just annotate
+their routes instead of reinventing checks.
+
+#### Files Expected to Be Created
+- `tests/api/test_rbac.py`
+
+#### Files Expected to Be Modified
+- `src/api/deps.py` (`require_role`, `CurrentUserDep`, `AdminUserDep`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None (role column + VARCHAR/CHECK constraint from M008).
+
+#### API Changes
+No new endpoints. Route-level contract from M010 on:
+- `user: Annotated[User, Depends(require_role(UserRole.admin))]` —
+  401 `not_authenticated`/`invalid_token` before any role logic;
+  403 `{error_code: "permission_denied", message: "You do not have
+  permission to perform this action."}` (static body, no role details) for
+  a signed-in user whose role is not among the declared ones; 200 otherwise.
+- **Role source is the DB column, read inside the existing single PK
+  SELECT** — no role claim in the JWT, so a role change takes effect on the
+  very next request without re-issuing tokens.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None.
+
+#### Implementation Steps
+1. `src/api/deps.py`: add `CurrentUserDep = Annotated[User,
+   Depends(get_current_user)]`.
+2. Add `require_role(*roles: UserRole)` factory: **fail fast** with
+   `ValueError` if called with zero roles (definition time, not request
+   time); inner async dependency takes `CurrentUserDep`, raises
+   `PermissionDenied` (already exists, 403, M005) unless
+   `user.role in frozenset(roles)` (StrEnum makes `"admin"`-style strings
+   compare equal too), returns the `User`.
+3. Add `AdminUserDep` alias for `require_role(UserRole.admin)` (first real
+   consumer: M052).
+4. Tests in `tests/api/test_rbac.py` (own `_db` skip-if-unreachable fixture
+   + `_app` with gated test routes, seeded farmer/extension_officer/admin):
+   see test lists below.
+
+#### Acceptance Criteria
+- [x] Gated route + no/malformed/expired/wrong-scheme token → 401, never
+      403 or 500 (401 strictly precedes role logic).
+- [x] Signed-in user with a non-allowed role → 403 `permission_denied` with
+      static body (no role/permission disclosure).
+- [x] User with any of the declared roles → 200; multi-role gates work.
+- [x] `require_role()` with zero roles raises `ValueError` at definition.
+- [x] Changing a user's role in the DB flips access for the *same* token
+      (role read from DB, not token).
+- [x] Inactive user's otherwise-valid token → 401 (M009 behavior intact).
+
+#### Unit Tests Required
+- `require_role()` empty-args → `ValueError`; role membership accepts both
+  `UserRole` members and plain strings (StrEnum equality).
+
+#### Integration Tests Required
+- Route × role matrix against real dev Postgres: farmer/extension_officer/
+  admin × `/any`-style (`CurrentUserDep`), single-role and multi-role
+  (`require_role`) routes, plus the role-change re-evaluation case.
+
+#### Security Checks Required
+- [x] Default-deny: access requires explicitly declared roles; no implicit
+      hierarchy — **admin does not silently pass other gates** (routes name
+      `UserRole.admin` explicitly).
+- [x] 401 before 403: unauthenticated callers learn nothing about which
+      roles exist (403 body is the generic static message).
+- [x] Role comes from the DB row (fresh), never from token claims
+      (prevents stale-privilege via long-lived refresh tokens).
+
+#### Performance Checks Required
+- [x] Gated request still performs exactly one PK SELECT (role rides along
+      on the user already loaded by `get_current_user`).
+
+#### Memory/Resource Checks Required
+None significant (stateless dependency; per-request session unchanged).
+
+#### Failure Scenarios to Handle
+- `require_role()` misused with no roles → `ValueError` at import/definition.
+- Deleted/disabled user → 401 via `get_current_user` (unchanged).
+- Corrupt/unknown role string in DB → not in the allowed set → denied
+  (safe default); the M008 CHECK constraint prevents it from occurring.
+
+#### Rollback Strategy
+Remove the M010 additions from `src/api/deps.py`; no DB or endpoint
+surface to unwind.
+
+#### Verification Commands
+```bash
+uv run pytest tests/api/test_rbac.py tests/api/test_auth.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No object-level/ownership checks (M014/M016 authorize per-resource), no
+role hierarchy or auto-elevation, no JWT role claim, no role-management
+endpoint (user administration later), no middleware-based authorization
+(dependency-based only).
+
+#### Verification & Notes (added on completion)
+- Gate PASSED: ruff format OK, ruff check OK, mypy 42 files OK,
+  pytest **92 passed / 0 skipped** (11 new RBAC: fail-fast ValueError,
+  StrEnum string membership, auth-required, farmer/officer/admin ×
+  any/single/multi-role route matrix, wrong-scheme 401, DB role-change
+  re-evaluation with the same token, deactivated-user 401);
+  bandit on `src/api` = 0 findings.
+- Live (uvicorn + dev DB): `/health` 200, login regression OK
+  (bearer tokens), route surface unchanged — M010 adds no endpoints, so
+  full live RBAC checks land with the first gated production route (M012+).
+- Route-handler gates use the no-default `Annotated[User,
+  Depends(require_role(...))]` style — a `Depends(...)` parameter *default*
+  trips ruff B008 (see M009 note).
+- Environment: the dev DB `users` table was found empty at verification
+  (container recreated between sessions wiped non-volume data) — re-seeded
+  `live-demo@example.com` for live checks.
