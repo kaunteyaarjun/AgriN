@@ -20,7 +20,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M003 | Database connectivity & session lifecycle | P0 | M002 | done |
 | M004 | Migration tooling & base schema (Alembic init) | P0 | M003 | done |
 | M005 | Structured logging & error-handling skeleton | P0 | M002 | done |
-| M006 | FastAPI app skeleton, routers, OpenAPI base | P0 | M002, M005 | not-started |
+| M006 | FastAPI app skeleton, routers, OpenAPI base | P0 | M002, M005 | done |
 | M007 | Health/readiness endpoints | P0 | M006 | not-started |
 | M008 | User model + password hashing | P0 | M004 | not-started |
 | M009 | Auth: login/token issuance (JWT) | P0 | M008, M006 | not-started |
@@ -588,3 +588,90 @@ No endpoints yet — this is pure infrastructure.
 #### Notes / deviations (logged, per rule 6)
 - Handlers are exposed via `register_exception_handlers(app)` for M006 to call;
   tests build a throwaway app so M005 stays app-free.
+
+---
+
+### M006 — FastAPI App Skeleton, Routers, OpenAPI Base
+
+**Priority:** P0 **Depends On:** M002, M005
+**Status:** done
+
+#### Objective
+A running FastAPI app with the router/versioning pattern established (`/api/v1/...`),
+wired to config, logging, and error handling.
+
+#### Why This Milestone Exists
+Every endpoint milestone (M007, M009, M012, ...) mounts onto this app; the versioning
+and middleware conventions must be set once, correctly.
+
+#### Files Expected to Be Created
+- `src/main.py` (app factory + `app` instance)
+- `src/api/__init__.py` unchanged; `src/api/v1/__init__.py` (v1 router aggregator)
+- `tests/api/__init__.py`, `tests/api/test_root.py`
+
+#### Files Expected to Be Modified
+- `.env.example` (document `CORS_ORIGINS` already present; no new vars)
+
+#### Database Changes
+None.
+
+#### API Changes
+`GET /` → app metadata `{name, version, environment}`.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new (`fastapi`, `uvicorn` already present).
+
+#### Implementation Steps
+1. `create_app()` factory: configures logging, registers exception handlers (M005),
+   mounts the `/api/v1` aggregator (empty), sets OpenAPI title/version/description.
+2. Explicit CORS allow-list from `settings.cors_origins` (never `*`).
+3. Fail fast at startup if settings are invalid (prod secret check already in M002).
+4. `GET /` returns name/version/environment; test via `httpx.ASGITransport`.
+
+#### Acceptance Criteria
+- [x] `uvicorn src.main:app` starts cleanly.
+- [x] `GET /docs` loads.
+- [x] `GET /` returns app name/version JSON.
+
+#### Unit Tests Required
+- None beyond the API test.
+
+#### Integration Tests Required
+- `GET /` → 200 with expected shape; `GET /openapi.json` → 200.
+
+#### Security Checks Required
+- [x] CORS is explicit, not wildcard.
+- [x] `/docs` exposure is a deliberate decision, noted in the milestone log.
+
+#### Performance Checks Required
+- [ ] App startup does not block on slow external calls.
+
+#### Memory/Resource Checks Required
+None at this size.
+
+#### Failure Scenarios to Handle
+Invalid settings at startup → fail fast with a clear log line.
+
+#### Rollback Strategy
+Revert `main.py`; nothing depends on it yet beyond imports.
+
+#### Verification Commands
+```bash
+uv run pytest tests/api/test_root.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No auth, no domain endpoints yet.
+
+#### Notes / deviations (logged, per rule 6)
+- `/docs` stays enabled (open API docs are wanted for the hackathon demo);
+  noted here as a deliberate choice, revisited at M055.
+- The lifespan handler configures logging; DB connectivity is exercised by
+  `/ready` in M007, so startup does not hard-fail when the DB is briefly down.

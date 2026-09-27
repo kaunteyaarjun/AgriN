@@ -4,18 +4,18 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M006 — FastAPI app skeleton, routers, OpenAPI base"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005"]
-Current implementation status: "M005 done: JSON log formatter + configure_logging, AppError hierarchy, register_exception_handlers (sanitized AppError responses; generic 500 with server-side traceback). No app/endpoints yet."
+Current milestone: "M007 — Health/readiness endpoints"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006"]
+Current implementation status: "M006 done: create_app factory with lifespan logging, M005 handlers, explicit CORS allow-list, /api/v1 router aggregator (ping), GET / metadata, OpenAPI at /docs. No auth/domain endpoints."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
 Known resource/memory issues: []
 Technical debt: []
 Blocked tasks: []
-Next milestone: "M006 — FastAPI app skeleton, routers, OpenAPI base"
-Last verification: "M005 gate PASSED with live dev DB: ruff format OK, ruff check OK, mypy 26 files OK, pytest 31 passed"
-Last test result: "pytest = 31 passed (errors 8, logging 4, config 8, db 4, redact 3, migrations 2, smoke 2)"
+Next milestone: "M007 — Health/readiness endpoints"
+Last verification: "M006 gate PASSED with live dev DB: ruff format OK, ruff check OK, mypy 30 files OK, pytest 35 passed; uvicorn GET / =200 verified"
+Last test result: "pytest = 35 passed (api 4, errors 8, logging 4, config 8, db 4, redact 3, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -39,6 +39,7 @@ Last test result: "pytest = 31 passed (errors 8, logging 4, config 8, db 4, reda
 | M003 | `9eaaec2` |
 | M004 | `2349f44` |
 | M005 | `4cf0a5e` |
+| M006 | `<pending — recorded after commit>` |
 
 ## Notes / findings
 
