@@ -36,7 +36,7 @@ Last test result: "pytest = 17 passed (config 8, db integration 4, db redact 3, 
 | M000 (kickoff) | `11de9f6` |
 | M001 | `ddaf68f` |
 | M002 | `d62d934` |
-| M003 | `<pending — recorded after commit>` |
+| M003 | `9eaaec2` |
 
 ## Notes / findings
 
