@@ -4,18 +4,18 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M002 — Configuration & secrets management"
-Completed milestones: ["M001"]
-Current implementation status: "M001 done: repo bootstrap, pinned deps, uv tooling skeleton, non-mutating quality gate (scripts/check.ps1) all green. No functional code yet."
+Current milestone: "M003 — Database connectivity & session lifecycle"
+Completed milestones: ["M001", "M002"]
+Current implementation status: "M002 done: typed Settings (pydantic-settings) with dev defaults, prod fail-fast for missing secrets, cached get_settings(); 8 config unit tests. No DB/provider/app code yet."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
 Known resource/memory issues: []
 Technical debt: []
 Blocked tasks: []
-Next milestone: "M002 — Configuration & secrets management"
-Last verification: "M001 gate PASSED: ruff format --check 15 files OK, ruff check OK, mypy 11 files OK, pytest 2 passed"
-Last test result: "pytest = 2 passed (tests/test_smoke.py)"
+Next milestone: "M003 — Database connectivity & session lifecycle"
+Last verification: "M002 gate PASSED: ruff format --check OK, ruff check OK, mypy 14 files OK, pytest 10 passed"
+Last test result: "pytest = 10 passed (tests/core/test_config.py 8, tests/test_smoke.py 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -35,6 +35,7 @@ Last test result: "pytest = 2 passed (tests/test_smoke.py)"
 |---|---|
 | M000 (kickoff) | `11de9f6` |
 | M001 | `ddaf68f` |
+| M002 | `<pending — recorded after commit>` |
 
 ## Notes / findings
 

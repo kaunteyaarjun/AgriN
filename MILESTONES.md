@@ -15,8 +15,8 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | ID | Milestone | Priority | Depends On | Status |
 |---|---|---|---|---|
 | **Foundation** | | | | |
-| M001 | Repository bootstrap (structure, tooling, pre-commit) | P0 🔒 | — | not-started |
-| M002 | Configuration & secrets management (env-based settings) | P0 | M001 | not-started |
+| M001 | Repository bootstrap (structure, tooling, pre-commit) | P0 🔒 | — | done |
+| M002 | Configuration & secrets management (env-based settings) | P0 | M001 | done |
 | M003 | Database connectivity & session lifecycle | P0 | M002 | not-started |
 | M004 | Migration tooling & base schema (Alembic init) | P0 | M003 | not-started |
 | M005 | Structured logging & error-handling skeleton | P0 | M002 | not-started |
@@ -205,3 +205,98 @@ No app code, no DB connection, no models, no endpoints.
 - Real `__init__.py` files were added to `src/` and all subpackages plus `workers/`
   so the editable install resolves concrete packages rather than implicit namespace
   packages (namespace packages reported `__file__ = None`).
+- Gate invocation on this host is `powershell -NoProfile -ExecutionPolicy Bypass
+  -File scripts/check.ps1` (`pwsh` / PowerShell 7 is not on PATH).
+
+---
+
+### M002 — Configuration & Secrets Management
+
+**Priority:** P0 **Depends On:** M001
+**Status:** done
+
+#### Objective
+A single typed `Settings` object (Pydantic `BaseSettings`) that loads all configuration
+from environment variables, with no hardcoded secrets anywhere.
+
+#### Why This Milestone Exists
+Every subsequent milestone (DB, auth, providers) needs configuration. Getting this right
+once avoids scattered `os.environ[...]` calls later.
+
+#### Files Expected to Be Created
+- `src/core/config.py`
+- `tests/core/__init__.py` (test-package marker)
+- `tests/core/test_config.py`
+
+#### Files Expected to Be Modified
+- `.env.example` (confirm/document variable names)
+
+#### Database Changes
+None.
+
+#### API Changes
+None.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+`pydantic-settings` (already added in M001). No new dependencies.
+
+#### Implementation Steps
+1. Define `Settings(BaseSettings)` with fields: `env` (`dev`/`prod`), `log_level`,
+   `database_url`, `jwt_secret`, `jwt_access_ttl_minutes`, `jwt_refresh_ttl_days`,
+   `cors_origins`, and provider mode flags (`weather_provider`, `satellite_provider`,
+   `soil_provider`, `disease_provider`, `llm_provider` — `demo`/`live`).
+2. `get_settings()` cached via `functools.lru_cache` so settings parse once per process.
+3. Fail fast and loudly if a required variable is missing in `prod` mode; allow sane
+   dev defaults only in `dev` mode.
+
+#### Acceptance Criteria
+- [x] App/settings fail with a clear validation error if `jwt_secret` (or
+      `database_url`) is missing in prod mode.
+- [x] Settings load correctly from a `.env` file in dev mode.
+- [x] No fallback secret value that would work in production.
+
+#### Unit Tests Required
+- Missing required var in prod mode → clear validation error.
+- Valid env → `Settings` populates correctly (incl. dev defaults).
+- `get_settings()` returns the same cached instance (parse-once).
+
+#### Integration Tests Required
+None.
+
+#### Security Checks Required
+- [x] No default/fallback `jwt_secret` that would be usable in prod.
+- [x] `jwt_secret` never logged (repr/str of Settings must not expose it).
+
+#### Performance Checks Required
+- [x] Settings parsed once (cached), not re-parsed per request.
+
+#### Memory/Resource Checks Required
+None significant at this size.
+
+#### Failure Scenarios to Handle
+Missing `.env` in dev → fall back to documented dev defaults; in prod → fail fast.
+
+#### Rollback Strategy
+Revert `config.py`; nothing else depends on specific field names yet.
+
+#### Verification Commands
+```bash
+uv run pytest tests/core/test_config.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No DB connection logic, no provider logic — just the settings object.
+
+#### Notes / deviations (logged, per rule 6)
+- Provider mode flags are `demo|live` literals validated by Pydantic; provider
+  implementations land in later milestones (M022+).
+- `cors_origins` uses `pydantic_settings.NoDecode` so a plain comma-separated
+  env value is accepted, instead of pydantic-settings' default JSON decoding
+  for complex types (which rejected `http://a,http://b`).
