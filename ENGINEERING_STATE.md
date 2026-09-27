@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M011 — Farmer profile model & migration"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010"]
-Current implementation status: "M010 done: RBAC foundation in src/api/deps.py — require_role(*roles) dependency factory (default-deny, fail-fast ValueError on zero roles, 401-before-403 via CurrentUserDep, static 403 permission_denied body, role always read from the DB-backed user so changes apply without re-issuing tokens) plus CurrentUserDep and AdminUserDep aliases. No gated production routes yet (first: M012+)."
+Current milestone: "M012 — Farmer CRUD API"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011"]
+Current implementation status: "M011 done: farmers table at Alembic revision 0003 (hand-written 0003_farmers.py) — surrogate uuid PK, user_id uuid NOT NULL UNIQUE FK -> users(id) ON DELETE CASCADE (1:1 profile, no orphan PII), full_name varchar(200) NOT NULL, phone/village/district nullable, tz timestamps; src/models/farmer.py Farmer model exported from src.models. No endpoints (M012)."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
@@ -15,9 +15,9 @@ Known resource/memory issues:
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
 Blocked tasks: []
-Next milestone: "M011 — Farmer profile model & migration"
-Last verification: "M010 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 42 files OK, pytest 92 passed / 0 skipped (11 new RBAC: route×role matrix, same-token role-change re-evaluation, fail-fast ValueError, wrong-scheme 401, deactivated-user 401); bandit on src/api = 0 findings. Live uvicorn: /health 200, login regression OK (bearer), route surface unchanged (M010 adds no endpoints)."
-Last test result: "pytest = 92 passed (rbac 11, auth 14, health 9, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, migrations 2, smoke 2)"
+Next milestone: "M012 — Farmer CRUD API"
+Last verification: "M011 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 45 files OK, pytest 100 passed / 0 skipped (8 new farmer: metadata/unique/FK-cascade asserts, round trip, duplicate + orphan IntegrityErrors, cascade delete); bandit on src/models = 0 findings. Live: upgrade head -> \\d farmers matches spec (farmers_user_id_key UNIQUE, farmers_user_id_fkey ON DELETE CASCADE), downgrade 0002 drops it, upgrade restores; alembic current = 0003 (head)."
+Last test result: "pytest = 100 passed (farmer 8, rbac 11, auth 14, health 9, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -96,3 +96,6 @@ Last test result: "pytest = 92 passed (rbac 11, auth 14, health 9, root 4, confi
 - 2026-09-27 (M010): route-handler gates must use the no-default form
   `Annotated[User, Depends(require_role(...))]` — putting `Depends(...)`
   in a parameter *default* trips ruff B008.
+- 2026-09-27 (M011): `.gitignore` currently carries an uncommitted local
+  edit (`.github` appended, no trailing newline) — not part of M011's
+  commit; confirm intent (ignore or track `.github/`) before committing it.

@@ -26,7 +26,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M009 | Auth: login/token issuance (JWT) | P0 | M008, M006 | done |
 | M010 | RBAC foundation (role enum + permission dependency) | P0 | M009 | done |
 | **Farmer/Farm/Plot domain** | | | | |
-| M011 | Farmer profile model & migration | P0 | M008 | not-started |
+| M011 | Farmer profile model & migration | P0 | M008 | done |
 | M012 | Farmer CRUD API | P0 | M011, M010 | not-started |
 | M013 | Farm model & migration (geo as JSONB) | P0 🔒 | M011 | not-started |
 | M014 | Farm CRUD API + ownership authorization | P0 | M013, M010 | not-started |
@@ -1260,3 +1260,150 @@ endpoint (user administration later), no middleware-based authorization
 - Environment: the dev DB `users` table was found empty at verification
   (container recreated between sessions wiped non-volume data) — re-seeded
   `live-demo@example.com` for live checks.
+
+---
+
+### M011 — Farmer Profile Model & Migration
+
+**Priority:** P0 **Depends On:** M008
+**Status:** done
+
+#### Objective
+`farmers` table (hand-written Alembic revision `0003`) + `Farmer` ORM model:
+the domain-facing profile for a farmer account, **1:1 with a `users` row**,
+giving M012's CRUD API a subject and M013's farms a stable `farmer_id` to
+reference.
+
+#### Why This Milestone Exists
+`users` (M008) is auth-only — email, password hash, role, is_active. Farmer
+demographics (name, phone, village/district) and the surrogate `farmer_id`
+that farms and oversight lists reference must not live in the auth table.
+Separation keeps login/role concerns out of domain rows and lets
+admins/officers exist without farmer profiles.
+
+#### Files Expected to Be Created
+- `src/models/farmer.py` (`Farmer` model)
+- `alembic/versions/0003_farmers.py` (hand-written migration)
+- `tests/models/test_farmer.py`
+
+#### Files Expected to Be Modified
+- `src/models/__init__.py` (export `Farmer` so `env.py`/autogenerate see it)
+- `tests/test_migrations.py` (pinned revision `0002` → `0003`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+New table (revision `0003`, `down_revision = "0002"`):
+
+```sql
+farmers (
+  id          uuid PRIMARY KEY,                -- app-side uuid4 (M008 style)
+  user_id     uuid NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  full_name   varchar(200) NOT NULL,
+  phone       varchar(32)  NULL,
+  village     varchar(120) NULL,
+  district    varchar(120) NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+)
+```
+
+- `user_id` UNIQUE → the 1:1 constraint, also serving as the lookup index.
+- `ON DELETE CASCADE`: deleting a user removes its profile (no orphan PII).
+- Migration is **hand-written** (standing rule: never trust autogenerate;
+  FK = `farmers_user_id_fkey`, unique = `farmers_user_id_key`).
+
+#### API Changes
+None (no endpoints in M011).
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None.
+
+#### Implementation Steps
+1. Spec (here), roadmap row → in-progress.
+2. `src/models/farmer.py`: `Farmer(Base)` mirroring `users` conventions
+   (`Mapped`/`mapped_column`, tz-aware timestamps, `__repr__` with id +
+   full_name only — no phone/location).
+3. `alembic/versions/0003_farmers.py`: hand-written `upgrade`/`downgrade`
+   (`drop_table("farmers")`), chained to `0002`.
+4. Export `Farmer` from `src/models/__init__.py`.
+5. Tests (`tests/models/test_farmer.py`, `_db` fixture pattern from
+   `test_user.py`):
+   - metadata: expected column set; `user_id` unique declared; FK to
+     `users.id` with `ondelete="CASCADE"` declared.
+   - integration: insert/select round trip with defaults (`phone`/`village`/
+     `district` → NULL, timestamps set); duplicate `user_id` →
+     `IntegrityError`; unknown `user_id` → `IntegrityError` (FK); delete
+     user → farmer row gone (cascade).
+6. Update `tests/test_migrations.py` pins to `0003`.
+
+#### Acceptance Criteria
+- [x] `alembic upgrade head` creates `farmers` at revision `0003`;
+      `downgrade -1` drops it; full round-trip test green.
+- [x] Model round-trips through Postgres with correct types and NULL
+      defaults for optional columns.
+- [x] DB enforces: one profile per user (unique), no orphan profiles (FK),
+      cascade delete removes profile with user.
+- [x] `Farmer` is importable from `src.models` (registered on
+      `Base.metadata` — autogenerate would detect it).
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+- Metadata/column-set assertions and constraint declarations (no DB).
+
+#### Integration Tests Required
+- Insert/select round trip; unique/FK/cascade violations against real dev
+  Postgres; migration upgrade→downgrade→base→upgrade at `0003`.
+
+#### Security Checks Required
+- [x] Cascade delete leaves no orphan personal data (profile rows cannot
+      outlive their account).
+- [x] `__repr__`/logs never include phone/village/district (PII) — id +
+      full_name only.
+
+#### Performance Checks Required
+- [x] `user_id` UNIQUE constraint provides the 1:1 lookup index; no other
+      hot-path impact (table not read by auth).
+
+#### Memory/Resource Checks Required
+None significant.
+
+#### Failure Scenarios to Handle
+- Second profile for the same user → `IntegrityError` from the DB.
+- Profile for a nonexistent user → `IntegrityError` from the FK.
+- Downgrade mid-life → `drop_table("farmers")` reversible (no data
+  transformation involved).
+
+#### Rollback Strategy
+`alembic downgrade 0002` drops the table; `users` (M008) and auth (M009/
+M010) unaffected. App code reverts by removing `src/models/farmer.py`.
+
+#### Verification Commands
+```bash
+uv run pytest tests/models/test_farmer.py tests/test_migrations.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+# live: alembic upgrade head / downgrade 0002 / upgrade head; inspect \d farmers
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No API endpoints (M012), no farms/plots (M013/M015), no phone-format or
+name validation (that's M012's pydantic layer), no soft-delete/archival,
+no demographics beyond the columns listed (YAGNI).
+
+#### Verification & Notes (added on completion)
+- Gate PASSED: ruff format OK, ruff check OK, mypy 45 files OK,
+  pytest **100 passed / 0 skipped** (8 new farmer: metadata column set,
+  unique + FK-cascade declarations, repr-PII exclusion, round trip with
+  NULL defaults, duplicate user_id → IntegrityError, orphan user_id →
+  FK IntegrityError, cascade delete); bandit on `src/models` = 0 findings.
+- Live on dev Postgres: `upgrade head` → `\d farmers` shows exactly the
+  spec'd schema (incl. `farmers_user_id_key` UNIQUE and
+  `farmers_user_id_fkey ... ON DELETE CASCADE`), `downgrade 0002` drops
+  it ("no relation" confirmed), `upgrade` restores; `alembic current`
+  = `0003 (head)`.
+- `tests/test_migrations.py` revision pins updated 0002 → 0003.
