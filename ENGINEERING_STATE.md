@@ -52,6 +52,7 @@ Last test result: "pytest = 165 passed (plots-API 13, farms-API 15, farmers-API 
 | M013 | `9e58818` |
 | M014 | `0a45a78` |
 | M015 | `750fc19` |
+| M016 | `d10854d` |
 
 ## Notes / findings
 
