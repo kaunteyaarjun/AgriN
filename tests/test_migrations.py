@@ -66,17 +66,17 @@ def _current_revision() -> str | None:
 def test_upgrade_downgrade_upgrade_round_trip() -> None:
     cfg = _config()
     command.upgrade(cfg, "head")
-    assert _current_revision() == "0004"
+    assert _current_revision() == "0005"
 
     command.downgrade(cfg, "base")
     assert _current_revision() is None
 
     command.upgrade(cfg, "head")
-    assert _current_revision() == "0004"
+    assert _current_revision() == "0005"
 
 
 def test_upgrade_head_is_idempotent() -> None:
     cfg = _config()
     command.upgrade(cfg, "head")
     command.upgrade(cfg, "head")
-    assert _current_revision() == "0004"
+    assert _current_revision() == "0005"

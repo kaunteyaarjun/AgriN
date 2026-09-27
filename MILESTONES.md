@@ -30,7 +30,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M012 | Farmer CRUD API | P0 | M011, M010 | done |
 | M013 | Farm model & migration (geo as JSONB) | P0 🔒 | M011 | done |
 | M014 | Farm CRUD API + ownership authorization | P0 | M013, M010 | done |
-| M015 | Plot model & migration | P0 | M013 | not-started |
+| M015 | Plot model & migration | P0 | M013 | done |
 | M016 | Plot CRUD API + ownership authorization | P0 | M015, M010 | not-started |
 | M017 | Cross-resource authorization audit (IDOR pass) | P0 | M012, M014, M016 | not-started |
 | **Farm Digital Twin** | | | | |
@@ -1891,3 +1891,115 @@ no projection transforms (all WGS84).
   downgrade-base wipe) — clean live artifacts (scoped deletes) before
   re-running the gate; the gate's own end-of-suite wipe then leaves a
   clean head for demo seeding.
+
+---
+
+### M015 — Plot Model & Migration
+
+**Priority:** P0 **Depends On:** M013
+**Status:** done
+
+#### Objective
+`plots` table (Alembic rev `0005`): subdivision boundaries inside a farm,
+same D7 geometry treatment as `farms`. Model + migration only — no API.
+
+#### Why This Milestone Exists
+Plots are the operating unit of the platform: M016 exposes them, M018/M019
+attach crop state, M025+ drive overlays per plot. Schema-first keeps M016
+pure CRUD work.
+
+#### Files Expected to Be Created
+- `src/models/plot.py`
+- `alembic/versions/0005_plots.py`
+- `tests/models/test_plot.py`
+
+#### Files Expected to Be Modified
+- `src/models/__init__.py` (export `Plot`)
+- `tests/test_migrations.py` (pin `0005`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+New table `plots`:
+- `id` uuid PK (client-side uuid4)
+- `farm_id` uuid NOT NULL FK → `farms(id)` ON DELETE CASCADE, btree
+  index `ix_plots_farm_id` (list-by-farm + cascade checks)
+- `name` varchar(120) NOT NULL, `UNIQUE (farm_id, name)` →
+  `plots_farm_id_name_key`
+- `area_hectares` numeric(10,2) NULL (client-provided for now; M018 may
+  derive from geometry)
+- `geo` `geometry(Geometry, 4326)` NULL, GIST index
+- `created_at`/`updated_at` timestamptz NOT NULL, `now()` defaults
+
+No API changes, no frontend changes, no new dependencies.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `Plot` model mirroring `Farm` (PII-free repr, no geo blob in repr).
+3. Hand-written `0005_plots.py` (standing rule: never autogenerate;
+   GeoAlchemy2 hook emits the GIST index).
+4. Export + migration pin.
+5. `tests/models/test_plot.py`: metadata assertions (no DB) + integration
+   (round trip, uniqueness scope, FK, cascade).
+
+#### Acceptance Criteria
+- [x] `alembic current = 0005 (head)`; `downgrade 0004` drops `plots`
+      only; round-trip green; `farms`/`farmers` untouched.
+- [x] Unique plot name **per farm** enforced; same name in another farm
+      OK; unknown `farm_id` rejected; deleting a farm removes its plots.
+- [x] Geometry round trip exact (`ST_AsText` equality) + SRID 4326;
+      `ix_plots_farm_id` and GIST `idx_plots_geo` present.
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+Metadata: column set, unique scope, FK cascade, SRID, `farm_id` index,
+repr without geo blob.
+
+#### Integration Tests Required
+Geometry round trip; duplicate `(farm_id, name)` IntegrityError;
+cross-farm same-name OK; orphan `farm_id` IntegrityError; farm→plots
+cascade.
+
+#### Security Checks Required
+- [x] Repr/logs never dump geo blob (large polygons).
+- [x] Cascade cannot orphan plots or leak across farms.
+
+#### Performance Checks Required
+- [x] `ix_plots_farm_id` btree for M016 list queries; GIST for M018+
+      overlays.
+
+#### Memory/Resource Checks Required
+None (schema only).
+
+#### Failure Scenarios to Handle
+- Concurrent duplicate `(farm_id, name)` → UNIQUE → IntegrityError
+  (mapped to 409 in M016).
+- Upgrading from `0004` must not require the extension re-create
+  (0004 owns it) — 0005 stays extension-free.
+
+#### Rollback Strategy
+`alembic downgrade 0004` drops `plots`; nothing else references it yet.
+
+#### Verification Commands
+```bash
+uv run pytest tests/models/test_plot.py tests/test_migrations.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+# live: alembic current/downgrade/upgrade + \d plots
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No API endpoints (M016), no crop/stage/planting-date columns (M018),
+no spatial containment validation (plot within farm) — that belongs to
+M016's service layer, no area computation from geometry.
+
+#### Verification & Notes (added on completion)
+- Gate PASSED: ruff format OK, ruff check OK, mypy 55 files OK,
+  pytest **152 passed / 0 skipped** (11 new plot: 6 metadata incl. btree
+  index + 5 integration incl. WKT round trip and farm→plots cascade);
+  bandit on `src/models` + 0005 migration = 0 findings.
+- Live: `alembic current = 0005 (head)`; downgrade `0004` drops `plots`
+  only (`farms` intact); `\d plots` matches spec exactly —
+  `geometry(Geometry,4326)`, `idx_plots_geo` GIST, `ix_plots_farm_id`
+  btree, `plots_farm_id_name_key` unique, FK `ON DELETE CASCADE`.
