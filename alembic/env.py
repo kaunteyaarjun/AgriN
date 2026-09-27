@@ -8,7 +8,6 @@ never hardcoded in ``alembic.ini``. ``target_metadata`` is the shared
 from __future__ import annotations
 
 import asyncio
-from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
@@ -22,8 +21,12 @@ from src.models import Base
 
 config = context.config
 
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# NOTE (M009 finding): stock alembic env.py calls
+# `fileConfig(config.config_file_name)` here. Deliberately omitted — it would
+# reconfigure the root logger (alembic.ini sets root=WARNING and disables
+# existing loggers), which (a) fights the app's JSON logging and (b) broke
+# pytest caplog assertions once in-process migrations ran before tests.
+# The app configures logging itself (src/core/logging.py).
 
 target_metadata = Base.metadata
 

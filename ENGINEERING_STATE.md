@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M009 — Auth: login/token issuance (JWT)"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008"]
-Current implementation status: "M008 done: `users` table (uuid pk, unique email, VARCHAR+CHECK role enum, is_active, tz timestamps) at Alembic revision 0002; src/core/security.py bcrypt (rounds=12) with sync core + asyncio.to_thread async wrappers. No endpoints yet."
+Current milestone: "M010 — RBAC foundation (role enum + permission dependency)"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009"]
+Current implementation status: "M009 done: POST /api/v1/auth/login (anti-enumeration 401, dummy-hash verify, 403 account_disabled only after password check) + POST /api/v1/auth/refresh (type=refresh, user must exist+active); JWT access 15m/refresh 7d (HS256, 5s leeway, fail-fast secret) in src/core/security.py; get_current_user dependency (HTTPBearer auto_error=False, one PK SELECT) in src/api/deps.py. Rate limiting & refresh revocation deferred to M055."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
@@ -15,9 +15,9 @@ Known resource/memory issues:
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
 Blocked tasks: []
-Next milestone: "M009 — Auth: login/token issuance (JWT)"
-Last verification: "M008 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 38 files OK, pytest 59 passed / 0 skipped (incl. duplicate-email IntegrityError + full migration round-trip at 0002); manual `alembic upgrade head / downgrade -1 / upgrade head` OK; bandit on security.py/user.py/0002_users.py = 0 findings."
-Last test result: "pytest = 59 passed (health 9, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 9, user 6, migrations 2, smoke 2)"
+Next milestone: "M010 — RBAC foundation (role enum + permission dependency)"
+Last verification: "M009 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 41 files OK, pytest 81 passed / 0 skipped (22 new: 8 JWT unit + 14 auth API); bandit on src/api + security.py + errors.py = 0 findings. Live uvicorn: login 200 bearer tokens, wrong-pw & unknown-email identical 401 invalid_credentials, refresh 200, access-at-refresh 401 invalid_token, routes in /openapi.json."
+Last test result: "pytest = 81 passed (auth 14, health 9, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -74,3 +74,16 @@ Last test result: "pytest = 59 passed (health 9, root 4, config 8, db 4, redact 
   silently prepended a BOM; stripped via `[System.IO.File]::WriteAllText` with
   `UTF8Encoding($false)`. Reinforces the UTF-8 lesson above — even for
   gitignored local files, prefer the UTF-8-safe file tools.
+- 2026-09-27 (M009): **Removed stock `fileConfig()` from `alembic/env.py`.**
+  Alembic's ini-driven logging config reset the root logger and disabled
+  existing `agrin.*` loggers once in-process migrations ran before API tests,
+  breaking caplog assertions in `tests/api/test_health.py`. App owns logging
+  (`src/core/logging.py`).
+- 2026-09-27 (M009): ruff **B008** rejects `Depends(...)` in parameter
+  defaults — repo convention is now `Annotated[X, Depends(...)]` (aliases
+  `SessionDep`/`CredentialsDep` in `src/api/deps.py`). Use for all future
+  FastAPI dependencies/params.
+- 2026-09-27 (M009): killing a `uv run uvicorn ...` Start-Process wrapper
+  leaves the child python.exe listening on the port — kill by the PID from
+  `netstat -ano | Select-String ":8000.*LISTENING"` or the stale server
+  serves old code (caused a confusing live 404).

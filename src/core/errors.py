@@ -57,6 +57,27 @@ class NotAuthenticated(AppError):
     message = "Authentication is required."
 
 
+class InvalidCredentials(AppError):
+    """Login failed. Identical body for unknown-email and wrong-password so
+    the response cannot be used to enumerate accounts (M009)."""
+
+    status_code = 401
+    error_code = "invalid_credentials"
+    message = "Invalid email or password."
+
+
+class InvalidToken(AppError):
+    status_code = 401
+    error_code = "invalid_token"
+    message = "The provided token is invalid or expired."
+
+
+class AccountDisabled(AppError):
+    status_code = 403
+    error_code = "account_disabled"
+    message = "This account has been disabled."
+
+
 class PermissionDenied(AppError):
     status_code = 403
     error_code = "permission_denied"

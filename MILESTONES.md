@@ -23,7 +23,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M006 | FastAPI app skeleton, routers, OpenAPI base | P0 | M002, M005 | done |
 | M007 | Health/readiness endpoints | P0 | M006 | done |
 | M008 | User model + password hashing | P0 | M004 | done |
-| M009 | Auth: login/token issuance (JWT) | P0 | M008, M006 | not-started |
+| M009 | Auth: login/token issuance (JWT) | P0 | M008, M006 | done |
 | M010 | RBAC foundation (role enum + permission dependency) | P0 | M009 | not-started |
 | **Farmer/Farm/Plot domain** | | | | |
 | M011 | Farmer profile model & migration | P0 | M008 | not-started |
@@ -957,3 +957,165 @@ password-reset flows.
   the fixture that owns engine disposal — asserted by the 59/59 green suite.
 - `mypy` types `User.__table__` as `FromClause` (no `.name`/`.constraints`) —
   tests `cast(Table, ...)` explicitly.
+
+---
+
+### M009 — Auth: Login/Token Issuance (JWT)
+
+**Priority:** P0 **Depends On:** M008, M006
+**Status:** done
+
+#### Objective
+`POST /api/v1/auth/login` issuing a short-lived JWT access token + a refresh
+token; `POST /api/v1/auth/refresh` to rotate the access token; plus the
+`get_current_user` dependency every protected route will use.
+
+#### Why This Milestone Exists
+Nothing downstream (RBAC, farmer/farm CRUD, everything behind auth) works
+without a correct, non-enumerating login flow and a trustworthy way to
+resolve a bearer token to a `User`.
+
+#### Files Expected to Be Created
+- `src/api/v1/auth.py` (login + refresh router)
+- `src/api/deps.py` (`get_current_user` FastAPI dependency)
+- `tests/api/test_auth.py`
+
+#### Files Expected to Be Modified
+- `src/core/security.py` (JWT encode/decode helpers, PyJWT/HS256)
+- `src/core/errors.py` (`InvalidCredentials`, `InvalidToken` AppError subclasses)
+- `src/api/v1/__init__.py` (mount auth router)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None (reads `users` from M008).
+
+#### API Changes
+- `POST /api/v1/auth/login` — body `{email, password}` → 200
+  `{access_token, refresh_token, token_type: "bearer"}`; 401
+  `{error_code: "invalid_credentials", message: "Invalid email or password."}`
+  for unknown email, wrong password (identical body — no enumeration);
+  403 `account disabled` only *after* password verification.
+- `POST /api/v1/auth/refresh` — body `{refresh_token}` → 200 with a new
+  access token (same shape); 401 `invalid_token` for expired/tampered/
+  wrong-type tokens or missing/disabled user.
+- Protected-route contract (used from M010 on):
+  `Authorization: Bearer <access>` → `get_current_user` → `User`;
+  missing/malformed/expired/tampered/wrong-type header → 401, never 500.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new — `PyJWT==2.15.0` already pinned (D5).
+
+#### Implementation Steps
+1. `src/core/security.py`: `create_access_token(user_id)` /
+   `create_refresh_token(user_id)` (claims: `sub` str, `type`, `iat`, `exp`
+   from settings TTLs; **HS256**, secret from `settings.jwt_secret`, clear
+   `RuntimeError` if unset — no insecure fallback) and `decode_token(token,
+   expected_type)` raising `InvalidToken` (401) on expiry/tamper/type-mismatch
+   (5s clock leeway; `require` exp+sub).
+2. `src/core/errors.py`: add `InvalidCredentials` (401) and `InvalidToken`
+   (401) with stable error codes.
+3. `src/api/v1/auth.py`: login (constant-time-ish: always run a bcrypt
+   verify — dummy-hash path when the email is unknown — so "no such user"
+   and "wrong password" cost the same and return identical bodies; use the
+   **async** hashing wrappers so the loop never blocks); refresh (decode as
+   type `refresh`, load user, must exist + be active, issue new access token).
+4. `src/api/deps.py`: `get_current_user` via `HTTPBearer(auto_error=False)`
+   (missing header → our own 401, not FastAPI's 403 quirk) → decode as type
+   `access` → load user by `sub` (one PK SELECT — the only DB hit) →
+   401 if missing or `is_active=False`.
+5. Mount `auth_router` in `/api/v1`.
+6. Tests (skip-if-unreachable `_db` fixture pattern from M008, fixture
+   actually requested by every DB test):
+   - unit: token round-trip claims, type mismatch, tampered signature,
+     expired token raises.
+   - API: login success (seeded user) → decodeable tokens; wrong password vs
+     unknown email → identical 401 bodies; inactive + correct password → 403;
+     refresh happy path; access-into-refresh → 401; protected test route with
+     valid/expired/tampered/missing/malformed credentials; disabled user's
+     valid token → 401; deleted user's refresh → 401.
+
+#### Acceptance Criteria
+- [x] Valid credentials → valid access+refresh tokens (decodable, correct
+      claims/TTLs).
+- [x] Invalid credentials → 401 with identical body for "no such user" and
+      "wrong password" (no user-enumeration leak).
+- [x] Expired/tampered access token → 401 on any protected route.
+- [x] Refresh token cannot be used as an access token and vice versa.
+- [x] Missing/malformed Authorization header → clean 401, not 500/403.
+
+#### Unit Tests Required
+- Token encode/decode round-trip; tampered token rejected; expired token
+  rejected; wrong `type` rejected.
+
+#### Integration Tests Required
+- Full login → access protected route → refresh → access again, end to end
+  (real dev Postgres).
+
+#### Security Checks Required
+- [x] Timing-safe password comparison (passlib verify — used correctly on
+      both user-found and user-missing paths).
+- [x] No user-enumeration via error bodies (identical JSON asserted) —
+      equalized work via dummy-hash verify (bcrypt timing not precisely
+      measured; structural equality of work verified by code path + tests).
+- [x] JWT secret only from settings/env, never logged; fail-fast if unset.
+- [x] Access TTL 15 min default; refresh TTL 7 days default (both from
+      settings, asserted from claims).
+- [x] Login rate limiting **flagged for M055** (not implemented here).
+
+#### Performance Checks Required
+- [x] Token decode does one PK SELECT per request (load current user) and
+      no unnecessary DB hits; hashing runs off the event loop (M008 wrappers).
+
+#### Memory/Resource Checks Required
+None significant (stateless tokens; sessions per-request via `get_db`).
+
+#### Failure Scenarios to Handle
+- `jwt_secret` unset → clear 500-class failure with log line, no silent
+  fallback secret.
+- Clock skew → 5s leeway on exp/iat.
+- Malformed Authorization header → 401, not an unhandled exception.
+- User deleted/disabled between token issue and use → 401/403 handled at
+  the dependency/route, not a crash.
+
+#### Rollback Strategy
+Remove `src/api/v1/auth.py` + `src/api/deps.py` and the router mount;
+`users` table (M008) unaffected.
+
+#### Verification Commands
+```bash
+uv run pytest tests/core/test_security.py tests/api/test_auth.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+# live: curl -X POST /api/v1/auth/login with seeded credentials
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No RBAC enforcement (`require_role` is M010), no registration endpoint,
+no token revocation/logout (refresh tokens are stateless — noted as a
+production hardening item for SECURITY.md/M055), no rate limiting (M055).
+
+#### Verification & Notes (added on completion)
+- Gate PASSED: ruff format OK, ruff check OK, mypy 41 files OK,
+  pytest **81 passed / 0 skipped** (22 new: 8 JWT unit + 14 auth API);
+  bandit on `src/api` + `security.py` + `errors.py` = 0 findings.
+- Live (uvicorn + dev DB): login → 200 `bearer` tokens (209/211 chars);
+  wrong password and unknown email both → 401 `invalid_credentials`
+  with identical body; refresh → 200 new access token; access token at
+  `/refresh` → 401 `invalid_token`; routes visible in `/openapi.json`.
+- **Finding:** stock alembic `env.py` calls `logging.config.fileConfig()` —
+  once in-process migrations ran *before* API tests (test_auth seeds the
+  DB), alembic.ini's `fileConfig` reset the root logger and disabled
+  `agrin.*` loggers, breaking M007's caplog assertion. Removed the call
+  from `alembic/env.py` (app configures its own logging); test_health
+  green again when run after test_auth.
+- **Finding:** ruff B008 rejects `Depends(...)` in parameter defaults —
+  adopted `Annotated[X, Depends(...)]` style (`SessionDep`,
+  `CredentialsDep` aliases in `src/api/deps.py`); use this style for all
+  future dependencies.
+- Deferred to M055 (flagged here): login rate limiting, refresh-token
+  revocation/logout.
