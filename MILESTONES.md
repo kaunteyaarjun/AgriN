@@ -18,7 +18,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M001 | Repository bootstrap (structure, tooling, pre-commit) | P0 🔒 | — | done |
 | M002 | Configuration & secrets management (env-based settings) | P0 | M001 | done |
 | M003 | Database connectivity & session lifecycle | P0 | M002 | done |
-| M004 | Migration tooling & base schema (Alembic init) | P0 | M003 | not-started |
+| M004 | Migration tooling & base schema (Alembic init) | P0 | M003 | done |
 | M005 | Structured logging & error-handling skeleton | P0 | M002 | not-started |
 | M006 | FastAPI app skeleton, routers, OpenAPI base | P0 | M002, M005 | not-started |
 | M007 | Health/readiness endpoints | P0 | M006 | not-started |
@@ -401,3 +401,96 @@ No models, no migrations yet — just the connection/session plumbing.
   transient Docker Hub TLS handshake error; a retry succeeded.
 - Finding (worth remembering): native Postgres services on 5432/5433 will
   shadow any dev container published to those ports — keep dev DB on 55432.
+
+---
+
+### M004 — Migration Tooling & Base Schema
+
+**Priority:** P0 **Depends On:** M003
+**Status:** done
+
+#### Objective
+Alembic wired up and producing a real, empty-but-working migration chain against the
+configured database, with a shared `Base.metadata` for future autogeneration.
+
+#### Why This Milestone Exists
+Every model milestone from M008 onward creates tables via migrations; the chain must
+be proven to upgrade *and* downgrade cleanly before real schema exists.
+
+#### Files Expected to Be Created
+- `alembic.ini`
+- `alembic/env.py`, `alembic/script.py.mako`
+- `alembic/versions/0001_init.py` (empty baseline revision)
+- `src/models/base.py` (`Base` declarative class + shared `metadata`)
+- `tests/test_migrations.py` (skips if DB unreachable; upgrade→downgrade→upgrade)
+
+#### Files Expected to Be Modified
+- `pyproject.toml` (ruff/mypy exclude `alembic/versions` if generated code trips them)
+
+#### Database Changes
+Creates Alembic's own `alembic_version` bookkeeping table only.
+
+#### API Changes
+None.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+`alembic` (already added in M001). No new dependencies.
+
+#### Implementation Steps
+1. `alembic init` (async-aware) to scaffold `alembic/`.
+2. Point the URL at `settings.database_url` via `env.py` (never hardcoded in
+   `alembic.ini`); wire `target_metadata = Base.metadata`.
+3. Generate and apply the empty baseline revision (`0001_init`).
+4. Round-trip test: `upgrade head` → `downgrade base` → `upgrade head`.
+
+#### Acceptance Criteria
+- [x] `alembic upgrade head` succeeds against the dev DB from a clean state.
+- [x] `alembic downgrade base` cleanly removes everything it created.
+- [x] Applying twice is idempotent (Alembic native — verified).
+
+#### Unit Tests Required
+- None (inherently integration).
+
+#### Integration Tests Required
+- Upgrade → downgrade → upgrade round-trip against the dev DB (skip if unreachable).
+
+#### Security Checks Required
+- [ ] DB URL for migrations comes from settings/env, never hardcoded.
+
+#### Performance Checks Required
+None at this size.
+
+#### Memory/Resource Checks Required
+None at this size.
+
+#### Failure Scenarios to Handle
+Migration applied twice — must be idempotent (verify).
+
+#### Rollback Strategy
+`alembic downgrade base`.
+
+#### Verification Commands
+```bash
+docker compose up -d db
+uv run alembic upgrade head
+uv run alembic downgrade base
+uv run alembic upgrade head
+uv run pytest tests/test_migrations.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No real domain tables yet — this is plumbing only.
+
+#### Notes / deviations (logged, per rule 6)
+- `alembic/env.py` loads the async URL from `Settings` at runtime; `alembic.ini`
+  retains no real URL (safe to commit).
+- Generated Alembic scaffolding is kept in the quality gate (formatted/linted);
+  `alembic/versions/*.py` gets a `F401` per-file ignore because the template
+  imports `op`/`sa` for future revisions.

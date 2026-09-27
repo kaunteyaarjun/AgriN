@@ -4,18 +4,18 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M004 — Migration tooling & base schema (Alembic init)"
-Completed milestones: ["M001", "M002", "M003"]
-Current implementation status: "M003 done: async engine/sessionmaker with bounded pool + pool_pre_ping, leak-proof get_db dependency, dev Postgres 16 via docker compose (host port 55432), wait_for_db script, 7 DB tests. No models/migrations yet."
+Current milestone: "M005 — Structured logging & error-handling skeleton"
+Completed milestones: ["M001", "M002", "M003", "M004"]
+Current implementation status: "M004 done: Alembic wired to Settings with shared Base.metadata, empty baseline 0001, upgrade/downgrade/idempotency verified against dev Postgres. No domain tables yet."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
 Known resource/memory issues: []
 Technical debt: []
 Blocked tasks: []
-Next milestone: "M004 — Migration tooling & base schema (Alembic init)"
-Last verification: "M003 gate PASSED with live dev DB: ruff format OK, ruff check OK, mypy 18 files OK, pytest 17 passed"
-Last test result: "pytest = 17 passed (config 8, db integration 4, db redact 3, smoke 2)"
+Next milestone: "M005 — Structured logging & error-handling skeleton"
+Last verification: "M004 gate PASSED with live dev DB: ruff format OK, ruff check OK, mypy 22 files OK, pytest 19 passed"
+Last test result: "pytest = 19 passed (config 8, db 4, db redact 3, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -37,6 +37,7 @@ Last test result: "pytest = 17 passed (config 8, db integration 4, db redact 3, 
 | M001 | `ddaf68f` |
 | M002 | `d62d934` |
 | M003 | `9eaaec2` |
+| M004 | `<pending — recorded after commit>` |
 
 ## Notes / findings
 
