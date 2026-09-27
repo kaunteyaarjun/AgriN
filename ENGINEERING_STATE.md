@@ -43,7 +43,7 @@ Last test result: "pytest = 59 passed (health 9, root 4, config 8, db 4, redact 
 | M005 | `4cf0a5e` |
 | M006 | `d303bb0` |
 | M007 | `0f50ada` |
-| M008 | `<pending — recorded after commit>` |
+| M008 | `a7cf3c5` |
 
 ## Notes / findings
 
