@@ -102,3 +102,106 @@ elaborated (full Section 5 template for M001–M010 pre-written from the
 Master Engineering Prompt; M011+ written just-in-time per Section 8).
 
 <!-- M0XX spec sections are appended here -->
+
+---
+
+### M001 — Repository Bootstrap
+
+**Priority:** P0 🔒 (checkpoint satisfied: Section 3 confirmed as-is on 2026-09-26) **Depends On:** None
+**Status:** done
+
+#### Objective
+Create the repository skeleton, dependency management, and dev tooling — nothing functional yet.
+
+#### Why This Milestone Exists
+Every later milestone needs a place to put code and a way to run lint/format/type-check/test consistently.
+
+#### Files Expected to Be Created
+- `pyproject.toml` (pinned dependency list + ruff + mypy + pytest config)
+- `.python-version` (pins 3.12, decision D6)
+- `.gitignore`, `.env.example`, `README.md` (stub)
+- `scripts/check.ps1` (fmt/lint/typecheck/test gate — decision D2 replaces Makefile/justfile)
+- `src/` package skeleton: `core/`, `models/`, `services/`, `ingestion/`, `ai/`, `interop/`, `api/`, `admin/`
+- `workers/`, `tests/` (+ smoke test so `pytest` exits 0)
+
+#### Files Expected to Be Modified
+None beyond the kickoff files.
+
+#### Database Changes
+None.
+
+#### API Changes
+None.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies (pinned, why)
+Runtime: `fastapi`, `uvicorn`, `sqlalchemy[asyncio]`, `alembic`, `asyncpg`, `pydantic-settings`,
+`passlib[bcrypt]` + `bcrypt==4.0.1` (decision D3), `PyJWT` (decision D5).
+Dev: `pytest`, `pytest-asyncio`, `httpx`, `ruff`, `mypy`, `bandit`, `pip-audit`.
+Resolved/pinned from PyPI on 2026-09-26 (see pyproject.toml).
+
+#### Implementation Steps
+1. Inspect target directory (done: empty, git initialized, uv/Python 3.12 available).
+2. `pyproject.toml` with pinned deps, setuptools build (`src*` + `workers*` packages),
+   ruff/mypy/pytest config sections.
+3. `.python-version` → 3.12.
+4. Directory skeleton with `__init__.py` in every package dir.
+5. `.env.example` with placeholder non-secret variable names only.
+6. README stub (one paragraph; full content in M059).
+7. `scripts/check.ps1`: non-mutating gate — `ruff format --check`, `ruff check`, `mypy`, `pytest`.
+8. Smoke test (`tests/test_smoke.py`) so `pytest` collects ≥1 test and exits 0.
+
+#### Acceptance Criteria
+- [x] `uv sync --extra dev` succeeds from clean.
+- [x] `ruff check .` and `mypy .` run without configuration errors.
+- [x] `pytest` runs and exits 0.
+
+#### Unit Tests Required
+- Smoke: `src` package importable; test collection works.
+
+#### Integration Tests Required
+None yet.
+
+#### Security Checks Required
+- [x] `.env.example` contains no real secrets.
+- [x] `.gitignore` excludes `.env`, `__pycache__`, `.venv`, build artifacts.
+
+#### Performance Checks Required
+None yet.
+
+#### Memory/Resource Checks Required
+None yet.
+
+#### Failure Scenarios to Handle
+Dependency resolution conflicts — versions pinned explicitly rather than floating.
+
+#### Rollback Strategy
+Delete the scaffold files; nothing depends on this yet.
+
+#### Verification Commands
+```bash
+uv sync --extra dev
+uv run ruff check .
+uv run mypy .
+uv run pytest
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5); security/perf/memory sections ticked explicitly.
+
+#### What Must NOT Be Implemented Here
+No app code, no DB connection, no models, no endpoints.
+
+#### Notes / deviations (logged, per rule 6)
+- Pre-commit role: the `pre-commit` framework is NOT added (not in Section 3 dep list;
+  network-dependent git hooks). Gate = `scripts/check.ps1` (decision D2).
+- `pytest` "0 tests" acceptance satisfied via an explicit smoke test (exit 0 guaranteed).
+- `MILESTONES.md` was repaired after a PowerShell 5.1 `Add-Content` ANSI-encoding
+  corruption introduced an invalid UTF-8 byte mid-file; the M001 spec was rewritten
+  with a UTF-8-safe writer.
+- Real `__init__.py` files were added to `src/` and all subpackages plus `workers/`
+  so the editable install resolves concrete packages rather than implicit namespace
+  packages (namespace packages reported `__file__ = None`).

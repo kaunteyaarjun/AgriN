@@ -4,18 +4,18 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M001 — Repository bootstrap"
-Completed milestones: []            # none yet
-Current implementation status: "Phase A complete (kickoff files). Repo initialized; MILESTONES.md roadmap loaded; awaiting M001 implementation."
+Current milestone: "M002 — Configuration & secrets management"
+Completed milestones: ["M001"]
+Current implementation status: "M001 done: repo bootstrap, pinned deps, uv tooling skeleton, non-mutating quality gate (scripts/check.ps1) all green. No functional code yet."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
 Known resource/memory issues: []
 Technical debt: []
 Blocked tasks: []
-Next milestone: "M001 — Repository bootstrap"
-Last verification: "git init OK; MILESTONES.md + ENGINEERING_STATE.md created"
-Last test result: "n/a (no tests yet)"
+Next milestone: "M002 — Configuration & secrets management"
+Last verification: "M001 gate PASSED: ruff format --check 15 files OK, ruff check OK, mypy 11 files OK, pytest 2 passed"
+Last test result: "pytest = 2 passed (tests/test_smoke.py)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -33,4 +33,18 @@ Last test result: "n/a (no tests yet)"
 
 | Milestone | Commit |
 |---|---|
-| (kickoff) | — |
+| M000 (kickoff) | `11de9f6` |
+| M001 | `<pending — recorded in follow-up commit>` |
+
+## Notes / findings
+
+- 2026-09-27: `MILESTONES.md` repaired. A PowerShell 5.1 `Add-Content` (ANSI)
+  append had introduced invalid UTF-8 byte `0x97` at offset 6520 plus mojibake
+  (`P0 ??`, `M001 �`, `→`/`—`). Rewritten UTF-8-safe; `ruff format --check`
+  exits 0 again. **Lesson: never use PS 5.1 `Add-Content`/`Set-Content` for
+  repo text files; use the UTF-8-safe file tools.**
+- 2026-09-27: Added real `__init__.py` files to `src/`, all eight subpackages
+  and `workers/` (previously empty dirs → implicit namespace packages with
+  `__file__ = None`). mypy now sees 11 source files.
+- `pwsh` (PowerShell 7) is not on PATH on this host; the gate must be invoked
+  as `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1`.
