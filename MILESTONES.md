@@ -19,7 +19,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M002 | Configuration & secrets management (env-based settings) | P0 | M001 | done |
 | M003 | Database connectivity & session lifecycle | P0 | M002 | done |
 | M004 | Migration tooling & base schema (Alembic init) | P0 | M003 | done |
-| M005 | Structured logging & error-handling skeleton | P0 | M002 | not-started |
+| M005 | Structured logging & error-handling skeleton | P0 | M002 | done |
 | M006 | FastAPI app skeleton, routers, OpenAPI base | P0 | M002, M005 | not-started |
 | M007 | Health/readiness endpoints | P0 | M006 | not-started |
 | M008 | User model + password hashing | P0 | M004 | not-started |
@@ -494,3 +494,97 @@ No real domain tables yet — this is plumbing only.
 - Generated Alembic scaffolding is kept in the quality gate (formatted/linted);
   `alembic/versions/*.py` gets a `F401` per-file ignore because the template
   imports `op`/`sa` for future revisions.
+
+---
+
+### M005 — Structured Logging & Error-Handling Skeleton
+
+**Priority:** P0 **Depends On:** M002
+**Status:** done
+
+#### Objective
+JSON-structured logging and a global exception handler that never leaks stack traces
+or secrets to API clients.
+
+#### Why This Milestone Exists
+Every endpoint and service from M006 onward needs consistent, safe logging and error
+responses; establishing the primitives now avoids ad-hoc `print`/`except` scattered
+later.
+
+#### Files Expected to Be Created
+- `src/core/logging.py` (JSON formatter + `configure_logging()`)
+- `src/core/errors.py` (`AppError` hierarchy + FastAPI handler registration)
+- `tests/core/test_errors.py`
+- `tests/core/test_logging.py`
+
+#### Files Expected to Be Modified
+None.
+
+#### Database Changes
+None.
+
+#### API Changes
+None yet (M006 registers the handlers with the app).
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new.
+
+#### Implementation Steps
+1. JSON log formatter emitting `timestamp`, `level`, `logger`, `message`, and
+   structured `extra` fields; safe fallback for non-serializable objects.
+2. `configure_logging(level)` keyed by `settings.log_level`, idempotent.
+3. `AppError` base exception with stable `error_code`, human-safe `message`, and
+   HTTP `status_code`; a few standard subclasses.
+4. `register_exception_handlers(app)`:
+   - `AppError` → its status + sanitized `{error_code, message}`.
+   - unhandled `Exception` → generic 500 body, full traceback only to the server log.
+
+#### Acceptance Criteria
+- [x] An unhandled exception returns a generic 500 JSON body to the client and a
+      full traceback in the server log.
+- [x] A raised `AppError` returns its mapped status code and safe message.
+- [x] Log output is valid JSON.
+
+#### Unit Tests Required
+- `AppError` → correct status/body.
+- Unhandled exception → generic body, no stack trace/exception text in response.
+- JSON formatter handles non-serializable objects without raising.
+
+#### Integration Tests Required
+- Minimal FastAPI app exercising both handlers via `httpx.ASGITransport`.
+
+#### Security Checks Required
+- [x] No stack traces, SQL, or file paths in client-facing error responses.
+- [x] No secrets in logs.
+
+#### Performance Checks Required
+None at this size.
+
+#### Memory/Resource Checks Required
+None at this size.
+
+#### Failure Scenarios to Handle
+Logging itself throwing (non-serializable object) must not crash the request —
+fall back to a safe repr.
+
+#### Rollback Strategy
+Revert the two files; nothing depends on error shapes yet.
+
+#### Verification Commands
+```bash
+uv run pytest tests/core/test_errors.py tests/core/test_logging.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No endpoints yet — this is pure infrastructure.
+
+#### Notes / deviations (logged, per rule 6)
+- Handlers are exposed via `register_exception_handlers(app)` for M006 to call;
+  tests build a throwaway app so M005 stays app-free.

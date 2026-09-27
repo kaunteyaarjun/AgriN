@@ -4,18 +4,18 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M005 — Structured logging & error-handling skeleton"
-Completed milestones: ["M001", "M002", "M003", "M004"]
-Current implementation status: "M004 done: Alembic wired to Settings with shared Base.metadata, empty baseline 0001, upgrade/downgrade/idempotency verified against dev Postgres. No domain tables yet."
+Current milestone: "M006 — FastAPI app skeleton, routers, OpenAPI base"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005"]
+Current implementation status: "M005 done: JSON log formatter + configure_logging, AppError hierarchy, register_exception_handlers (sanitized AppError responses; generic 500 with server-side traceback). No app/endpoints yet."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
 Known resource/memory issues: []
 Technical debt: []
 Blocked tasks: []
-Next milestone: "M005 — Structured logging & error-handling skeleton"
-Last verification: "M004 gate PASSED with live dev DB: ruff format OK, ruff check OK, mypy 22 files OK, pytest 19 passed"
-Last test result: "pytest = 19 passed (config 8, db 4, db redact 3, migrations 2, smoke 2)"
+Next milestone: "M006 — FastAPI app skeleton, routers, OpenAPI base"
+Last verification: "M005 gate PASSED with live dev DB: ruff format OK, ruff check OK, mypy 26 files OK, pytest 31 passed"
+Last test result: "pytest = 31 passed (errors 8, logging 4, config 8, db 4, redact 3, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -38,6 +38,7 @@ Last test result: "pytest = 19 passed (config 8, db 4, db redact 3, migrations 2
 | M002 | `d62d934` |
 | M003 | `9eaaec2` |
 | M004 | `2349f44` |
+| M005 | `<pending — recorded after commit>` |
 
 ## Notes / findings
 
