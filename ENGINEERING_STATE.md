@@ -50,6 +50,7 @@ Last test result: "pytest = 141 passed (farms 15, farmers 15, auth 14, health 9,
 | M011 | `ffc6718` |
 | M012 | `0060725` |
 | M013 | `9e58818` |
+| M014 | `0a45a78` |
 
 ## Notes / findings
 
