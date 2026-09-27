@@ -34,7 +34,7 @@ Last test result: "pytest = 2 passed (tests/test_smoke.py)"
 | Milestone | Commit |
 |---|---|
 | M000 (kickoff) | `11de9f6` |
-| M001 | `<pending — recorded in follow-up commit>` |
+| M001 | `ddaf68f` |
 
 ## Notes / findings
 
