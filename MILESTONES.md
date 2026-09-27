@@ -28,7 +28,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **Farmer/Farm/Plot domain** | | | | |
 | M011 | Farmer profile model & migration | P0 | M008 | done |
 | M012 | Farmer CRUD API | P0 | M011, M010 | done |
-| M013 | Farm model & migration (geo as JSONB) | P0 🔒 | M011 | not-started |
+| M013 | Farm model & migration (geo as JSONB) | P0 🔒 | M011 | done |
 | M014 | Farm CRUD API + ownership authorization | P0 | M013, M010 | not-started |
 | M015 | Plot model & migration | P0 | M013 | not-started |
 | M016 | Plot CRUD API + ownership authorization | P0 | M015, M010 | not-started |
@@ -1563,3 +1563,170 @@ of user accounts (only farmer profiles).
   unscoped `DELETE FROM users` (wiped every account); now scoped to
   seeded ids (FK cascade cleans farmer rows). Same hygiene verified in
   the other fixtures.
+
+---
+
+### M013 — Farm Model & Migration (PostGIS geometry)
+
+**Priority:** P0 🔒 (checkpoint **satisfied 2026-09-27**: human chose
+PostGIS `geometry` column over GeoJSON-in-JSONB and over a plain point —
+decision D7) **Depends On:** M011
+**Status:** done
+
+#### Objective
+`farms` table (hand-written Alembic revision `0004`, `CREATE EXTENSION
+postgis`) + `Farm` ORM model with a real PostGIS `geometry(Geometry, 4326)`
+column for field boundaries, giving M014's CRUD API and the farm digital
+twin (M018+) a spatially-queryable subject.
+
+#### Why This Milestone Exists
+Farms are the anchor of the whole digital twin: plots (M015) hang off
+farms, and weather/satellite/soil overlays (M023+) need real spatial
+queries (`ST_Intersects` etc.), which JSONB coordinates cannot express
+efficiently. The human checkpoint chose a true spatial type over the
+roadmap's original JSONB wording (D7).
+
+#### Files Expected to Be Created
+- `src/models/farm.py` (`Farm` model)
+- `alembic/versions/0004_farms.py` (hand-written migration)
+- `tests/models/test_farm.py`
+
+#### Files Expected to Be Modified
+- `docker-compose.yml` (db image `postgres:16` → `postgis/postgis:16-3.4`)
+- `pyproject.toml` / `uv.lock` (add pinned `geoalchemy2`)
+- `src/models/__init__.py` (export `Farm`)
+- `tests/test_migrations.py` (pins `0003` → `0004`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+Revision `0004` (`down_revision = "0003"`):
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+farms (
+  id            uuid PRIMARY KEY,                 -- app-side uuid4
+  farmer_id     uuid NOT NULL REFERENCES farmers(id) ON DELETE CASCADE,
+  name          varchar(120) NOT NULL,
+  area_hectares numeric(10,2) NULL,
+  geo           geometry(Geometry, 4326) NULL,    -- WGS84 boundary, GIST index
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (farmer_id, name)                        -- no duplicate names per farmer
+)
+```
+
+- `geo` NULL-able: profiles can be created before boundaries are mapped.
+- Generic `Geometry` SRID 4326 (Polygon/MultiPolygon both storable);
+  point-level validation of GeoJSON payloads happens at the API (M014).
+- Spatial GIST index auto-created by GeoAlchemy2 (`spatial_index=True`).
+- `ON DELETE CASCADE`: deleting a farmer profile removes its farms.
+- Extension created by the migration (idempotent `IF NOT EXISTS`);
+  `downgrade` drops the table and leaves the extension (harmless,
+  re-created idempotently on upgrade).
+
+#### API Changes
+None (no endpoints in M013).
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+- `geoalchemy2` (pinned exact, adds to pyproject) — SQLAlchemy geometry
+  type + `WKTElement`/EWKB handling; works via `asyncpg` (round-trip
+  test proves it on this milestone).
+- Docker image `postgis/postgis:16-3.4` (same PG16 major as before — the
+  named volume `agrin_pgdata` keeps its data).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress, D7 recorded.
+2. `docker-compose.yml` image swap; `docker compose up -d db` (recreates
+   container, volume preserved); confirm `SELECT postgis_full_version()`.
+3. `uv add geoalchemy2` → normalize to exact `==` pin in pyproject.
+4. `src/models/farm.py`: `Farm(Base)` — uuid PK, `farmer_id` FK
+   cascade, name, area_hectares, `Geometry(Geometry, srid=4326,
+   spatial_index=True)`, tz timestamps, unique `(farmer_id, name)`,
+   repr without geo blob.
+5. `alembic/versions/0004_farmers.py`: hand-written — extension + table.
+6. Export `Farm` from `src/models/__init__.py`.
+7. Tests `tests/models/test_farm.py` (`_db` fixture pattern):
+   - metadata: column set, unique `(farmer_id, name)`, FK cascade,
+     SRID 4326 declared.
+   - integration: extension present; insert farm with WKT polygon →
+     `ST_AsText` round trip; duplicate (farmer, name) → IntegrityError;
+     unknown farmer_id → FK IntegrityError; delete farmer → cascade.
+8. `tests/test_migrations.py` pins → `0004`.
+
+#### Acceptance Criteria
+- [x] Dev DB runs PostGIS (`postgis_full_version()` works) after image swap.
+- [x] `alembic upgrade head` → revision `0004`, `farmers`+`farms` both
+      present; `downgrade 0003` drops `farmers` only; round-trip green.
+- [x] Polygon writes/reads back identically (`ST_AsText` equality) —
+      proves asyncpg + GeoAlchemy2 path.
+- [x] DB enforces unique farm name per farmer, FK/cascade, SRID 4326.
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+- Metadata assertions (column set, SRID, unique key, FK) — no DB.
+
+#### Integration Tests Required
+- Extension availability, geometry round trip, unique/FK/cascade
+  violations against real dev Postgres; migration round trip at `0004`.
+
+#### Security Checks Required
+- [x] `__repr__`/logs never dump the geo blob (can be large).
+- [x] Extension creation is idempotent (no superuser surprises on rerun).
+
+#### Performance Checks Required
+- [x] GIST spatial index exists on `geo` (GeoAlchemy2 default) for
+      M018+/overlay queries; no auth-path impact.
+
+#### Memory/Resource Checks Required
+None significant; large boundaries kept NULL until provided (no default
+geometry).
+
+#### Failure Scenarios to Handle
+- PostGIS image not running → migration `CREATE EXTENSION` fails loudly
+  (skip-if-unreachable fixture keeps gate green without Docker).
+- Duplicate farm name for same farmer → `IntegrityError` (M014 maps → 409).
+- Farm for deleted farmer → FK `IntegrityError` / cascade cleanup.
+
+#### Rollback Strategy
+`alembic downgrade 0003` (drops `farms`, extension stays); revert
+`docker-compose.yml` image to `postgres:16` only on a fresh volume
+(PostGIS-typed data would not load into vanilla Postgres).
+
+#### Verification Commands
+```bash
+uv run pytest tests/models/test_farm.py tests/test_migrations.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+# live: SELECT postgis_full_version(); \d farms ; round-trip ST_AsText
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No API endpoints (M014), no plots (M015), no GeoJSON payload validation
+(M014's pydantic layer), no raster/tile serving, no projections other
+than WGS84 (SRID 4326).
+
+#### Verification & Notes (added on completion)
+- Gate PASSED: ruff format OK, ruff check OK, mypy 50 files OK,
+  pytest **126 passed / 0 skipped** (11 new farm: metadata column set,
+  unique(farmer_id,name), FK cascade, SRID/geometry-type, repr-no-geo,
+  PostGIS extension live, WKT→`ST_AsText` exact round trip + `ST_SRID`
+  4326, duplicate-name IntegrityError, cross-farmer same-name OK, FK
+  IntegrityError, cascade delete); bandit on `src/models` + migration = 0.
+- Live: `alembic current = 0004 (head)`; downgrade 0003 drops `farmers`
+  only (extension + farmers intact); `\d farms` matches spec incl.
+  `geo geometry(Geometry,4326)`, `idx_farms_geo` GIST, unique key, FK
+  `ON DELETE CASCADE`; `postgis_version()` = 3.4.
+- **asyncpg + GeoAlchemy2 round trip proven** (WKTElement bind →
+  ST_AsText equality) — the main technical risk of D7 cleared.
+- Container swap `postgres:16 → postgis/postgis:16-3.4` kept the named
+  volume (same PG major); existing data needed an explicit
+  `CREATE EXTENSION` (image init scripts only run on fresh volumes) —
+  the migration owns this idempotently. Also ran
+  `ALTER DATABASE agrin REFRESH COLLATION VERSION` (image glibc older
+  than the one that created the data).

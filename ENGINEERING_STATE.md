@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M013 — Farm model & migration (geo as JSONB) [LOCK: human checkpoint required before implementing]"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012"]
-Current implementation status: "M012 done: /api/v1/farmers CRUD (POST self/admin create, GET list admin+officer with limit/offset, GET/PATCH owner-or-privileged, DELETE admin-only) with server-side ownership (non-owner farmer -> 404, no IDOR oracle), FarmerCreate/FarmerPatch/FarmerRead schemas (phone pattern, empty-patch 422), Conflict 409 error class; mounted in api/v1. Pattern set for M014/M016 ownership checks."
+Current milestone: "M014 — Farm CRUD API + ownership authorization"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013"]
+Current implementation status: "M013 done (D7): farms table at Alembic revision 0004 — uuid PK, farmer_id FK -> farmers(id) ON DELETE CASCADE, name varchar(120) with UNIQUE(farmer_id,name), area_hectares numeric(10,2) NULL, geo geometry(Geometry,4326) NULL with GIST idx_farms_geo; CREATE EXTENSION postgis (idempotent, migration-owned); docker db image now postgis/postgis:16-3.4; new pinned dep geoalchemy2==0.20.0; asyncpg+WKTElement round trip proven. No endpoints (M014)."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
@@ -15,9 +15,9 @@ Known resource/memory issues:
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
 Blocked tasks: []
-Next milestone: "M013 — Farm model & migration (geo as JSONB) — LOCKED, needs human checkpoint (geo shape decision) before implementation"
-Last verification: "M012 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 47 files OK, pytest 115 passed / 0 skipped (15 new farmer-CRUD incl. full authz matrix); bandit on src/api + errors.py = 0 findings. Live uvicorn matrix 12/12 per spec (201/401/200/404/200/403/404/200/list-403/204/404)."
-Last test result: "pytest = 115 passed (farmers 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farmer-model 8, migrations 2, smoke 2)"
+Next milestone: "M014 — Farm CRUD API + ownership authorization"
+Last verification: "M013 gate PASSED with live dev DB (65432, PostGIS 3.4): ruff format OK, ruff check OK, mypy 50 files OK, pytest 126 passed / 0 skipped (11 new farm incl. WKT->ST_AsText exact round trip + ST_SRID 4326); bandit on src/models + 0004 migration = 0 findings. Live: alembic current 0004 (head), downgrade 0003 drops farms only, \\d farms = geometry(Geometry,4326) + GIST idx_farms_geo + unique(farmer_id,name) + FK CASCADE."
+Last test result: "pytest = 126 passed (farm-model 11, farmers-CRUD 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farmer-model 8, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -30,6 +30,7 @@ Last test result: "pytest = 115 passed (farmers 15, auth 14, health 9, rbac 11, 
 | D4 | Authorized system actions: `git init`; start Docker Desktop when M003+ verification needs the dev Postgres |
 | D5 | JWT library → **PyJWT** (Section 3 allows "python-jose or pyjwt") |
 | D6 | Python → **3.12** pinned via `.python-version` / `requires-python` |
+| D7 | Farm geometry → **PostGIS `geometry(Geometry, 4326)` column** (human-confirmed 2026-09-27; rejected GeoJSON-in-JSONB and plain lat/lng point). DB image becomes `postgis/postgis:16-3.4`, new pinned dep `geoalchemy2`. |
 
 ## Milestone commits
 
