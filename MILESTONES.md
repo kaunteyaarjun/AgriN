@@ -21,7 +21,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M004 | Migration tooling & base schema (Alembic init) | P0 | M003 | done |
 | M005 | Structured logging & error-handling skeleton | P0 | M002 | done |
 | M006 | FastAPI app skeleton, routers, OpenAPI base | P0 | M002, M005 | done |
-| M007 | Health/readiness endpoints | P0 | M006 | not-started |
+| M007 | Health/readiness endpoints | P0 | M006 | done |
 | M008 | User model + password hashing | P0 | M004 | not-started |
 | M009 | Auth: login/token issuance (JWT) | P0 | M008, M006 | not-started |
 | M010 | RBAC foundation (role enum + permission dependency) | P0 | M009 | not-started |
@@ -391,7 +391,7 @@ No models, no migrations yet — just the connection/session plumbing.
   `src.core.db` does not require a reachable DB at import time.
 - Integration tests skip (not fail) when the dev DB is unreachable, so the
   non-DB quality gate stays green on hosts without Docker running.
-- **Deviation:** compose maps Postgres to host port `55432`, not `5432`.
+- **Deviation:** compose maps Postgres to host port `65432`, not `5432`.
   This host already runs native PostgreSQL 17 (port 5432) and 18 (port 5433)
   Windows services, which shadowed the container's published port and caused
   `password authentication failed`. Remapping avoids stopping the user's
@@ -400,7 +400,14 @@ No models, no migrations yet — just the connection/session plumbing.
 - `pip install` of Docker image `postgres:16` initially failed with a
   transient Docker Hub TLS handshake error; a retry succeeded.
 - Finding (worth remembering): native Postgres services on 5432/5433 will
-  shadow any dev container published to those ports — keep dev DB on 55432.
+  shadow any dev container published to those ports — keep dev DB off 5432/5433.
+- Port history: the dev port was originally `55432`; during M007 verification
+  (2026-09-27) `docker compose up -d db` failed with `bind: ...forbidden by
+  its access permissions` because Windows/Hyper-V had dynamically excluded
+  range 55345–55444 (which covers 55432). Moved to `65432` — outside all
+  ranges from `netsh interface ipv4 show excludedportrange protocol=tcp`.
+  **Re-check the exclusion list if binding ever fails again after a reboot
+  (these ranges are dynamic).**
 
 ---
 
@@ -675,3 +682,127 @@ No auth, no domain endpoints yet.
   noted here as a deliberate choice, revisited at M055.
 - The lifespan handler configures logging; DB connectivity is exercised by
   `/ready` in M007, so startup does not hard-fail when the DB is briefly down.
+
+---
+
+### M007 — Health/Readiness Endpoints
+
+**Priority:** P0 **Depends On:** M006
+**Status:** done
+
+#### Objective
+`/health` (liveness — process is up) and `/ready` (readiness — DB reachable)
+so the docker-compose stack and any future orchestration can check status.
+
+#### Why This Milestone Exists
+Operators (and later M058's compose stack) need a way to distinguish "process
+alive" from "actually able to serve" without reading logs.
+
+#### Files Expected to Be Created
+- `src/api/health.py` (router with the two probes)
+- `tests/api/test_health.py`
+
+#### Files Expected to Be Modified
+- `src/main.py` (mount the health router at app root, not under `/api/v1`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None.
+
+#### API Changes
+- `GET /health` → 200 `{"status": "ok"}` always (no dependencies, no auth).
+- `GET /ready` → 200 `{"status": "ready"}` if DB answers `SELECT 1` within a
+  2s timeout; 503 `{"status": "unavailable"}` otherwise. Public, no auth,
+  no internal detail in the body.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new (`asyncio.wait_for` from stdlib).
+
+#### Implementation Steps
+1. Router in `src/api/health.py`: `/health` returns immediately; `/ready`
+   opens a raw connection from the shared engine (`engine.connect()` +
+   `SELECT 1`) wrapped in `asyncio.wait_for(..., timeout=READY_TIMEOUT_S=2.0)
+   so a DB *hang* becomes a fast 503. Catches `Exception` broadly but only
+   returns `{"status": "unavailable"}` — detail goes to the server log.
+2. Mount router in `create_app()` at root (probes stay outside `/api/v1`
+   so infra tooling needs no version knowledge).
+3. Tests: health-always-200, ready-200-skip-if-no-db, ready-503-on-error,
+   ready-503-on-hang (fast, measured < timeout+ε), no-detail-leak,
+   no-connection-leak on the failure path.
+4. Manual live verification: DB up → 200; `docker compose stop db` → 503;
+   restart DB.
+
+#### Acceptance Criteria
+- [x] `/health` returns 200 even if the DB is down. (verified live: DB
+      stopped → `/health` still 200)
+- [x] `/ready` returns 503 if the DB is down, 200 if up. (verified live
+      across stop/start of the compose db container)
+- [x] `/ready` converts a DB *hang* into a fast 503 (explicit timeout;
+      hang test measures elapsed within [2.0s, 4.5s)).
+- [x] Neither endpoint leaks internal detail (no stack traces, SQL, paths) —
+      tests assert exact response bodies.
+
+#### Unit Tests Required
+- [x] Mocked DB failure → `/ready` returns 503 with generic body.
+- [x] Mocked DB hang → `/ready` returns 503 promptly (elapsed < ~4.5s).
+
+#### Integration Tests Required
+- [x] Real DB up → `/ready` returns 200 (ran with dev Postgres, 0 skips).
+- [x] `/health` returns 200 with no DB involvement (fails if engine touched).
+
+#### Security Checks Required
+- [x] These endpoints leak no internal detail beyond up/down status.
+- [x] No auth on these endpoints (infra probes: public but non-revealing;
+      logged for the M010 public allow-list).
+
+#### Performance Checks Required
+- [x] `/ready`'s DB check has an explicit timeout (doesn't hang the endpoint
+      — measured, hang test bounds elapsed time).
+
+#### Memory/Resource Checks Required
+- [x] Failure paths leave no checked-out pool connections (real-engine
+      refused-connection test asserts `pool.checkedout() == 0`).
+
+#### Failure Scenarios to Handle
+- DB unreachable → 503, not 500.
+- DB hangs (not just errors) → timeout converts hang into fast 503.
+- Engine not yet configured (no `DATABASE_URL`) → 503, not unhandled exception.
+
+#### Rollback Strategy
+Revert `src/api/health.py` and the mount line in `main.py`; nothing depends
+on these routes.
+
+#### Verification Commands
+```bash
+uv run pytest tests/api/test_health.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+# live: uvicorn src.main:app → curl /health, /ready; compose stop db → 503
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No auth on these endpoints; no DB schema changes; no `/api/v1` prefix; no
+orchestration/deployment config (that's M058).
+
+#### Notes / deviations (logged, per rule 6)
+- **Environment finding:** during live verification `docker compose up -d db`
+  failed with `bind: ...forbidden by its access permissions` — host port
+  55432 had fallen inside a Windows/Hyper-V dynamic exclusion range
+  (55345–55444 from `netsh ... excludedportrange`). Dev DB host port moved
+  `55432 → 65432` (verified outside all listed ranges); `docker-compose.yml`,
+  `.env`, `.env.example`, README and the M003 deviation note updated.
+- **Environment finding:** this opencode host process carries a stale
+  `DATABASE_URL` env var (port 55432) in its process environment; real env
+  vars override `.env` in pydantic-settings. Verification commands must be
+  run as `$env:DATABASE_URL=$null; <cmd>` or they hit the wrong port. Not
+  set at User/Machine scope, so it dies with the host process.
+- Residual (documented, not fixed): if `asyncio.wait_for` cancels the check
+  exactly while a real connection is mid-cleanup, SQLAlchemy's pool handles
+  the greenlet cancellation; the refused-connection test covers the common
+  error path (`checkedout()==0`). A true mid-socket hang during cancellation
+  is not reproducible locally — noted for the M056 resource pass.

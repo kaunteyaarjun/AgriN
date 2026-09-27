@@ -1,8 +1,9 @@
 """AgriN FastAPI application.
 
 The app factory wires configuration, structured logging (M005), sanitized
-exception handlers (M005), the versioned API router, and an explicit CORS
-allow-list. Domain endpoints are mounted in later milestones.
+exception handlers (M005), the health/readiness probes (M007), the versioned
+API router, and an explicit CORS allow-list. Domain endpoints are mounted in
+later milestones.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.health import router as health_router
 from src.api.v1 import api_router
 from src.core.config import get_settings
 from src.core.errors import register_exception_handlers
@@ -49,6 +51,9 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(app)
+    # Infra probes stay at the root (outside /api/v1) so orchestration tools
+    # need no version knowledge; both are public by design (M007/M010 allow-list).
+    app.include_router(health_router)
     app.include_router(api_router)
 
     @app.get("/", tags=["meta"])
