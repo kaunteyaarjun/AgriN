@@ -38,7 +38,7 @@ Last test result: "pytest = 31 passed (errors 8, logging 4, config 8, db 4, reda
 | M002 | `d62d934` |
 | M003 | `9eaaec2` |
 | M004 | `2349f44` |
-| M005 | `<pending — recorded after commit>` |
+| M005 | `4cf0a5e` |
 
 ## Notes / findings
 
