@@ -47,6 +47,7 @@ Last test result: "pytest = 115 passed (farmers 15, auth 14, health 9, rbac 11, 
 | M009 | `1f9996c` |
 | M010 | `c477bad` |
 | M011 | `ffc6718` |
+| M012 | `0060725` |
 
 ## Notes / findings
 
