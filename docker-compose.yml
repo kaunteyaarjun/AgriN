@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: agrin
+      POSTGRES_PASSWORD: agrin
+      POSTGRES_DB: agrin
+    ports:
+      - "55432:5432"
+    volumes:
+      - agrin_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agrin -d agrin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  agrin_pgdata:

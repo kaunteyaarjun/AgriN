@@ -17,7 +17,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **Foundation** | | | | |
 | M001 | Repository bootstrap (structure, tooling, pre-commit) | P0 🔒 | — | done |
 | M002 | Configuration & secrets management (env-based settings) | P0 | M001 | done |
-| M003 | Database connectivity & session lifecycle | P0 | M002 | not-started |
+| M003 | Database connectivity & session lifecycle | P0 | M002 | done |
 | M004 | Migration tooling & base schema (Alembic init) | P0 | M003 | not-started |
 | M005 | Structured logging & error-handling skeleton | P0 | M002 | not-started |
 | M006 | FastAPI app skeleton, routers, OpenAPI base | P0 | M002, M005 | not-started |
@@ -300,3 +300,104 @@ No DB connection logic, no provider logic — just the settings object.
 - `cors_origins` uses `pydantic_settings.NoDecode` so a plain comma-separated
   env value is accepted, instead of pydantic-settings' default JSON decoding
   for complex types (which rejected `http://a,http://b`).
+
+---
+
+### M003 — Database Connectivity & Session Lifecycle
+
+**Priority:** P0 **Depends On:** M002
+**Status:** done
+
+#### Objective
+An async SQLAlchemy engine + session factory + a FastAPI dependency (`get_db`) that
+guarantees sessions are always closed.
+
+#### Why This Milestone Exists
+Every model/migration/endpoint milestone from M004 onward needs a working connection
+and a leak-proof session lifecycle.
+
+#### Files Expected to Be Created
+- `src/core/db.py`
+- `docker-compose.yml` (dev `db` service, Postgres 16)
+- `scripts/wait_for_db.py`
+- `tests/core/test_db.py` (integration; skips if DB unreachable)
+
+#### Files Expected to Be Modified
+- `.env.example` (document the dev DB URL used by compose)
+- `README.md` (mention `docker compose up -d db`)
+
+#### Database Changes
+None yet (no tables) — but the connection is verified against a real Postgres.
+
+#### API Changes
+None.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+`asyncpg` + `sqlalchemy[asyncio]` (already added in M001). No new dependencies.
+
+#### Implementation Steps
+1. Async engine from `settings.database_url` with sane pool bounds (`pool_size`,
+   `max_overflow`, `pool_pre_ping`, `pool_recycle`).
+2. Async `sessionmaker` (`async_sessionmaker`, `expire_on_commit=False`).
+3. `get_db()` async-generator dependency closing the session in `finally`.
+4. Minimal `docker-compose.yml` with a `db` (Postgres 16) service + healthcheck.
+5. `scripts/wait_for_db.py` to poll DB readiness before tests/CI race it.
+
+#### Acceptance Criteria
+- [ ] App can open and cleanly close a DB session against the compose Postgres.
+- [ ] A session is never left open after use, including on an exception.
+
+#### Unit Tests Required
+- URL redaction helper (password never visible).
+
+#### Integration Tests Required
+- Open a session, run `SELECT 1`, confirm close even if the handler raises.
+
+#### Security Checks Required
+- [ ] `database_url` never logged with the password visible.
+
+#### Performance Checks Required
+- [ ] Connection pooling configured with sane bounds (not unlimited, not 1).
+
+#### Memory/Resource Checks Required
+- [ ] Repeated `get_db` iteration (100x) does not leak connections — check
+      `pg_stat_activity` / pool checked-out count before and after.
+
+#### Failure Scenarios to Handle
+DB unreachable at startup → clear error, not a silent hang.
+
+#### Rollback Strategy
+Revert `db.py`; nothing depends on schema yet.
+
+#### Verification Commands
+```bash
+docker compose up -d db
+uv run python -m scripts.wait_for_db
+uv run pytest tests/core/test_db.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No models, no migrations yet — just the connection/session plumbing.
+
+#### Notes / deviations (logged, per rule 6)
+- `get_db` is defined with a lazy engine/sessionmaker accessor so importing
+  `src.core.db` does not require a reachable DB at import time.
+- Integration tests skip (not fail) when the dev DB is unreachable, so the
+  non-DB quality gate stays green on hosts without Docker running.
+- **Deviation:** compose maps Postgres to host port `55432`, not `5432`.
+  This host already runs native PostgreSQL 17 (port 5432) and 18 (port 5433)
+  Windows services, which shadowed the container's published port and caused
+  `password authentication failed`. Remapping avoids stopping the user's
+  existing services. The dev URL also uses `ssl=disable` (the local container
+  has no TLS; asyncpg otherwise attempts an SSL upgrade and errors).
+- `pip install` of Docker image `postgres:16` initially failed with a
+  transient Docker Hub TLS handshake error; a retry succeeded.
+- Finding (worth remembering): native Postgres services on 5432/5433 will
+  shadow any dev container published to those ports — keep dev DB on 55432.

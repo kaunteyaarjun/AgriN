@@ -4,18 +4,18 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M003 — Database connectivity & session lifecycle"
-Completed milestones: ["M001", "M002"]
-Current implementation status: "M002 done: typed Settings (pydantic-settings) with dev defaults, prod fail-fast for missing secrets, cached get_settings(); 8 config unit tests. No DB/provider/app code yet."
+Current milestone: "M004 — Migration tooling & base schema (Alembic init)"
+Completed milestones: ["M001", "M002", "M003"]
+Current implementation status: "M003 done: async engine/sessionmaker with bounded pool + pool_pre_ping, leak-proof get_db dependency, dev Postgres 16 via docker compose (host port 55432), wait_for_db script, 7 DB tests. No models/migrations yet."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
 Known resource/memory issues: []
 Technical debt: []
 Blocked tasks: []
-Next milestone: "M003 — Database connectivity & session lifecycle"
-Last verification: "M002 gate PASSED: ruff format --check OK, ruff check OK, mypy 14 files OK, pytest 10 passed"
-Last test result: "pytest = 10 passed (tests/core/test_config.py 8, tests/test_smoke.py 2)"
+Next milestone: "M004 — Migration tooling & base schema (Alembic init)"
+Last verification: "M003 gate PASSED with live dev DB: ruff format OK, ruff check OK, mypy 18 files OK, pytest 17 passed"
+Last test result: "pytest = 17 passed (config 8, db integration 4, db redact 3, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -36,6 +36,7 @@ Last test result: "pytest = 10 passed (tests/core/test_config.py 8, tests/test_s
 | M000 (kickoff) | `11de9f6` |
 | M001 | `ddaf68f` |
 | M002 | `d62d934` |
+| M003 | `<pending — recorded after commit>` |
 
 ## Notes / findings
 
@@ -49,3 +50,7 @@ Last test result: "pytest = 10 passed (tests/core/test_config.py 8, tests/test_s
   `__file__ = None`). mypy now sees 11 source files.
 - `pwsh` (PowerShell 7) is not on PATH on this host; the gate must be invoked
   as `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1`.
+- 2026-09-27: This host runs **native PostgreSQL 17 (5432) and 18 (5433)**
+  Windows services. Any dev container published to those ports is shadowed
+  (connections hit the native server → wrong password). The AgriN dev DB is
+  therefore on host port **55432**. Do not "fix" it back to 5432.
