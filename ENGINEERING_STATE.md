@@ -35,7 +35,7 @@ Last test result: "pytest = 10 passed (tests/core/test_config.py 8, tests/test_s
 |---|---|
 | M000 (kickoff) | `11de9f6` |
 | M001 | `ddaf68f` |
-| M002 | `<pending — recorded after commit>` |
+| M002 | `d62d934` |
 
 ## Notes / findings
 
