@@ -22,7 +22,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M005 | Structured logging & error-handling skeleton | P0 | M002 | done |
 | M006 | FastAPI app skeleton, routers, OpenAPI base | P0 | M002, M005 | done |
 | M007 | Health/readiness endpoints | P0 | M006 | done |
-| M008 | User model + password hashing | P0 | M004 | not-started |
+| M008 | User model + password hashing | P0 | M004 | done |
 | M009 | Auth: login/token issuance (JWT) | P0 | M008, M006 | not-started |
 | M010 | RBAC foundation (role enum + permission dependency) | P0 | M009 | not-started |
 | **Farmer/Farm/Plot domain** | | | | |
@@ -806,3 +806,154 @@ orchestration/deployment config (that's M058).
   the greenlet cancellation; the refused-connection test covers the common
   error path (`checkedout()==0`). A true mid-socket hang during cancellation
   is not reproducible locally — noted for the M056 resource pass.
+
+---
+
+### M008 — User Model + Password Hashing
+
+**Priority:** P0 **Depends On:** M004
+**Status:** done
+
+#### Objective
+A `users` table (email, hashed password, role, timestamps) and a hashing
+utility — no endpoints yet.
+
+#### Why This Milestone Exists
+Auth (M009) and RBAC (M010) need somewhere to store users and a correct,
+salted password hash; getting the schema + hashing right here keeps M009
+purely about token issuance.
+
+#### Files Expected to Be Created
+- `src/models/user.py` (`User` model + `UserRole` enum)
+- `src/core/security.py` (`hash_password`/`verify_password` + async wrappers)
+- `alembic/versions/0002_users.py` (hand-reviewed migration)
+- `tests/models/__init__.py`, `tests/models/test_user.py`
+- `tests/core/test_security.py`
+
+#### Files Expected to Be Modified
+- `src/models/__init__.py` (export `Base`/`User` so the package registers tables)
+- `alembic/env.py` (import `src.models` so `--autogenerate` sees all tables)
+- `tests/test_migrations.py` (head revision `0001` → `0002`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+New `users` table (Alembic revision `0002`, down_revision `0001`):
+`id uuid pk`, `email varchar(320) unique`, `password_hash varchar(128)`,
+`role varchar(32) + CHECK (farmer|extension_officer|admin)`,
+`is_active boolean not null default true`, `created_at timestamptz
+server_default now()`, `updated_at timestamptz server_default now()`.
+Role is modeled with `sa.Enum(native_enum=False, create_constraint=True)` —
+a DB-level CHECK constraint, deliberately **not** a native PG enum type
+(native types don't get dropped by `drop_table`, which breaks the
+upgrade→downgrade→upgrade round-trip test; documented deviation, still
+enforced at the DB level, not just in app code).
+
+#### API Changes
+None.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new — `passlib[bcrypt]==1.7.4` + `bcrypt==4.0.1` already pinned (D3).
+
+#### Implementation Steps
+1. `UserRole` (str Enum) + `User(Base)` model per the schema above;
+   `email` unique=True (PG unique constraint ⇒ implicit index; no separate
+   redundant non-unique index).
+2. `src/core/security.py`: sync `hash_password`/`verify_password`
+   (bcrypt, explicit `rounds=12`; malformed hash → `verify` returns False,
+   never raises) + async wrappers `hash_password_async`/`verify_password_async`
+   that run the sync core via `asyncio.to_thread` so request handlers never
+   block the event loop (M009 must use the async forms).
+3. `src/models/__init__.py` exports; `alembic/env.py` imports the package so
+   autogenerate sees `users`.
+4. Generate migration with `alembic revision --autogenerate`, then
+   **hand-review the diff** (unique constraint + CHECK must both be present).
+5. Update `tests/test_migrations.py` head-revision assertions (`0002`).
+6. Tests: unit (round-trip, salted, wrong password, malformed hash, bcrypt
+   work factor, plaintext never stored, async wrappers run off-loop) +
+   DB integration (duplicate email → IntegrityError, skip if no DB).
+
+#### Acceptance Criteria
+- [x] Migration applies and rolls back cleanly (`upgrade head` →
+      `downgrade -1` → `upgrade head` — verified manually and by the
+      test_migrations round-trip at revision 0002).
+- [x] `email` has a unique constraint enforced at the DB level (duplicate
+      insert raises IntegrityError — integration test on real Postgres).
+- [x] Passwords are never stored in plaintext, anywhere, including logs
+      (hash-prefix/plaintext tests; `security.py` does no logging; bandit 0).
+
+#### Unit Tests Required
+- [x] Hash/verify round-trip works; wrong password fails verification.
+- [x] Same password hashed twice produces different hashes (salted).
+- [x] Malformed/garbage stored hash → verify returns False (no exception).
+- [x] Parsed bcrypt rounds == 12 (explicit work factor).
+- [x] Hashed output contains no plaintext password; starts with `$2b$`.
+- [x] Async wrappers execute the hashing in a worker thread, not the event
+      loop (thread-identity captured inside a monkeypatched core).
+
+#### Integration Tests Required
+- [x] Inserting a duplicate email raises `IntegrityError` (real dev Postgres).
+- [x] Migration round-trip with `users` at head (test_migrations at 0002).
+
+#### Security Checks Required
+- [x] Bcrypt work factor reasonable and explicit (12; revisit in M055 per D3).
+- [x] No password ever appears in a log line, error message, or exception —
+      `src.core.security` does no logging; `User.__repr__` omits the hash
+      (asserted by test).
+
+#### Performance Checks Required
+- [x] Hashing runs off the event loop — verified by thread-identity tests
+      for both async wrappers.
+
+#### Memory/Resource Checks Required
+- [x] Sessions closed in `finally`, engine disposed in fixture teardown;
+      suite runs repeatedly with no pool exhaustion (59/59 green, 0 skips).
+
+#### Failure Scenarios to Handle
+- Autogenerate misses the unique constraint or CHECK — inspect and hand-fix
+  the migration file, don't trust it blindly.
+- Stored hash corrupted/truncated → verification returns False, no crash.
+- Migration applied twice → idempotent (Alembic native; round-trip test).
+
+#### Rollback Strategy
+`alembic downgrade -1` removes `users`; revert the source files (nothing
+depends on them until M009).
+
+#### Verification Commands
+```bash
+uv run alembic upgrade head
+uv run alembic downgrade -1 && uv run alembic upgrade head
+uv run pytest tests/core/test_security.py tests/models/test_user.py tests/test_migrations.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No login endpoint, no JWT issuance (M009), no `require_role` (M010), no
+email normalization/case-folding policy (deferred until registration
+endpoints exist — noted so M009/M012 handle lookup consistently), no
+password-reset flows.
+
+#### Notes / deviations (logged, per rule 6)
+- Role column uses VARCHAR+CHECK instead of a native PG enum (rationale in
+  Database Changes) — semantically still a DB-enforced enum.
+- Async wrappers added beyond Section 7's sync-only wording to satisfy this
+  milestone's own performance check (hashing must not block the loop).
+- **Autogenerate bug (caught by hand-review):** the generated migration
+  emitted the role CHECK constraint **twice with the same name**
+  (once via `sa.Enum(create_constraint=True)` on the column, once as an
+  explicit table constraint) — PostgreSQL rejects that. Migration rewritten
+  by hand keeping only the column-owned CHECK. Confirms the standing rule:
+  **never trust autogenerate blindly.**
+- **Test bug found & fixed:** both DB tests initially failed to *request* the
+  `_db` fixture, so its `dispose_engine()` teardown never ran; test A's pooled
+  connections (bound to A's closed event loop) poisoned test B deterministically
+  (`Event loop is closed`), and the leaked engine cache even caused a
+  misleading SKIP in `test_migrations`. Lesson: an async DB test must request
+  the fixture that owns engine disposal — asserted by the 59/59 green suite.
+- `mypy` types `User.__table__` as `FromClause` (no `.name`/`.constraints`) —
+  tests `cast(Table, ...)` explicitly.

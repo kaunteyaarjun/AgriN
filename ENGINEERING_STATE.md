@@ -4,19 +4,20 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M008 — User model + password hashing"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007"]
-Current implementation status: "M007 done: GET /health (liveness, never touches DB) and GET /ready (SELECT 1 within 2s asyncio.wait_for timeout → 200/503) mounted at app root outside /api/v1; public but non-revealing, detail only in server logs. Verified live across DB stop/restart."
+Current milestone: "M009 — Auth: login/token issuance (JWT)"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008"]
+Current implementation status: "M008 done: `users` table (uuid pk, unique email, VARCHAR+CHECK role enum, is_active, tz timestamps) at Alembic revision 0002; src/core/security.py bcrypt (rounds=12) with sync core + asyncio.to_thread async wrappers. No endpoints yet."
 Known bugs: []
 Known security issues: []
 Known performance issues: []
 Known resource/memory issues:
   - "Residual (documented, not reproducible locally): asyncio.wait_for cancelling /ready's check mid real-socket cleanup; SQLAlchemy pool handles greenlet cancellation — re-measure in M056. Refused-connection path asserted clean (checkedout()==0)."
-Technical debt: []
+Technical debt:
+  - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
 Blocked tasks: []
-Next milestone: "M008 — User model + password hashing"
-Last verification: "M007 gate PASSED with live dev DB (port 65432): ruff format OK, ruff check OK, mypy 32 files OK, pytest 44 passed / 0 skipped. Live uvicorn: /health=200 & /ready=200 (DB up) → /health=200 & /ready=503 (DB stopped) → /ready=200 (DB restarted). bandit on src/api/health.py exit 0."
-Last test result: "pytest = 44 passed (health 9, root 4, config 8, db 4, redact 3, errors 8, logging 4, migrations 2, smoke 2)"
+Next milestone: "M009 — Auth: login/token issuance (JWT)"
+Last verification: "M008 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy 38 files OK, pytest 59 passed / 0 skipped (incl. duplicate-email IntegrityError + full migration round-trip at 0002); manual `alembic upgrade head / downgrade -1 / upgrade head` OK; bandit on security.py/user.py/0002_users.py = 0 findings."
+Last test result: "pytest = 59 passed (health 9, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 9, user 6, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -42,6 +43,7 @@ Last test result: "pytest = 44 passed (health 9, root 4, config 8, db 4, redact 
 | M005 | `4cf0a5e` |
 | M006 | `d303bb0` |
 | M007 | `0f50ada` |
+| M008 | `<pending — recorded after commit>` |
 
 ## Notes / findings
 

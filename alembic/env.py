@@ -15,7 +15,10 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from src.core.config import get_settings
-from src.models.base import Base
+
+# Importing the package (not base directly) registers every model on
+# Base.metadata so `alembic revision --autogenerate` sees all tables.
+from src.models import Base
 
 config = context.config
 
