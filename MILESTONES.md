@@ -29,7 +29,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M011 | Farmer profile model & migration | P0 | M008 | done |
 | M012 | Farmer CRUD API | P0 | M011, M010 | done |
 | M013 | Farm model & migration (geo as JSONB) | P0 🔒 | M011 | done |
-| M014 | Farm CRUD API + ownership authorization | P0 | M013, M010 | not-started |
+| M014 | Farm CRUD API + ownership authorization | P0 | M013, M010 | done |
 | M015 | Plot model & migration | P0 | M013 | not-started |
 | M016 | Plot CRUD API + ownership authorization | P0 | M015, M010 | not-started |
 | M017 | Cross-resource authorization audit (IDOR pass) | P0 | M012, M014, M016 | not-started |
@@ -1730,3 +1730,164 @@ than WGS84 (SRID 4326).
   the migration owns this idempotently. Also ran
   `ALTER DATABASE agrin REFRESH COLLATION VERSION` (image glibc older
   than the one that created the data).
+
+---
+
+### M014 — Farm CRUD API + Ownership Authorization
+
+**Priority:** P0 **Depends On:** M013, M010
+**Status:** in-progress
+
+#### Objective
+`/api/v1/farms` CRUD with GeoJSON boundary payloads (`ST_GeomFromGeoJSON`
+in, `ST_AsGeoJSON` out) and the ownership matrix reused from M012:
+farmers manage farms **of their own profile**, admins everything, officers
+read everything.
+
+#### Why This Milestone Exists
+First spatial API — it proves the D7 stack end-to-end (GeoJSON → PostGIS →
+GeoJSON), establishes farm ownership rules that M015 (plots) and M017
+(IDOR audit) build on, and feeds the dashboards (M047) and farm-state
+engine (M019).
+
+#### Files Expected to Be Created
+- `src/api/v1/farms.py` (schemas + router)
+
+#### Files Expected to Be Modified
+- `src/api/v1/__init__.py` (mount router)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None (uses `farms` from M013).
+
+#### API Changes
+All under `/api/v1/farms`; list envelope `{items, total, limit, offset}`;
+farm object `{id, farmer_id, name, area_hectares, geo, created_at,
+updated_at}` where `geo` is a GeoJSON Polygon/MultiPolygon (or null).
+
+| Actor | POST | GET list | GET one | PATCH | DELETE |
+|---|---|---|---|---|---|
+| anonymous | 401 | 401 | 401 | 401 | 401 |
+| farmer, own farm | 201 (own profile forced) | 200 (own only) | 200 | 200 | 403 |
+| farmer, other's | 403 (profile mismatch) / 404 | scoped | 404 | 404 | 404 |
+| extension_officer | 403 | 200 (all) | 200 | 403 | 403 |
+| admin | 201 (any farmer profile) | 200 (all) | 200 | 200 | 200 |
+
+- **POST** (farmer): `farmer_id` forced to own profile (mismatch → 403);
+  no profile yet → 409 `conflict` ("create your farmer profile first").
+  **POST** (admin): body `farmer_id` must exist (404 otherwise). Duplicate
+  name for the same farmer → 409 (UNIQUE mapped from IntegrityError).
+- **GET list**: farmer → auto-scoped to own `farmer_id`; admin/officer →
+  all, optional `farmer_id` filter; `limit` 1–100 (default 50),
+  `offset` ≥ 0.
+- **Ownership**: non-owner farmer on get/patch/delete → **404**;
+  officer read-only (patch/delete → 403); owner delete → 403; admin all.
+- **PATCH**: ≥1 field; name ≤120, area ≥ 0, geo re-validated; partial
+  updates never touch `farmer_id` (ownership is immutable).
+- **Geo validation (pydantic)**: `type` ∈ {Polygon, MultiPolygon}; rings
+  ≥ 4 positions, first == last; lon ∈ [-180,180], lat ∈ [-90,90];
+  invalid → 422 before any DB write. Stored via
+  `ST_GeomFromGeoJSON(json.dumps(...))`; read back via `ST_AsGeoJSON` in
+  the same SELECT (no N+1).
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new (`geoalchemy2` from M013).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/api/v1/farms.py`: `GeoJsonPolygon`-style validator, `FarmCreate`
+   / `FarmPatch` / `FarmRead` / `FarmList`; ownership helpers resolving
+   `farm.farmer_id → farmer.user_id == current_user.id`; geo written with
+   `func.ST_GeomFromGeoJSON`, read with `func.ST_AsGeoJSON`.
+3. Mount in `src/api/v1/__init__.py` (tag `farms`).
+4. Tests `tests/api/test_farms.py` (seeded farmer/officer/admin, minted
+   tokens as in M012): matrix + geo validation + API geo round trip.
+
+#### Acceptance Criteria
+- [x] Full matrix above passes on real dev Postgres.
+- [x] GeoJSON round trip through the API: POST polygon → GET returns the
+      same coordinates; invalid ring/coords → 422, nothing persisted.
+- [x] Farmer list auto-scoped (cannot see other farmers' farms); non-owner
+      get/patch → 404.
+- [x] Duplicate name per farmer → 409; farmer without profile → 409;
+      admin unknown farmer_id → 404.
+- [x] `farmer_id` immutable via PATCH.
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+- GeoJSON validator: valid polygon passes, open ring rejected, bad
+  coordinates/`type` rejected, empty-patch rejected, area < 0 rejected
+  (no DB).
+
+#### Integration Tests Required
+- Complete actor × endpoint matrix, API geo round trip (`ST_AsGeoJSON`
+  equality), 409s, against dev Postgres.
+
+#### Security Checks Required
+- [x] 401 before role/ownership logic; ownership resolved server-side via
+      `farmers.user_id` (never client filters).
+- [x] Non-owner farmers get 404 (no existence oracle) — M017 input.
+- [x] GeoJSON depth/size sane-guards (max coordinates length) so a huge
+      payload cannot wedge PostGIS.
+
+#### Performance Checks Required
+- [x] List = one SELECT (incl. `ST_AsGeoJSON` per row) + one COUNT;
+      single-row paths = one SELECT; no N+1.
+
+#### Memory/Resource Checks Required
+None significant (payload size capped by pydantic limits).
+
+#### Failure Scenarios to Handle
+- Concurrent duplicate name → second commit hits UNIQUE → 409.
+- Malformed geometry reaching PostGIS despite validation → clean 422/409
+  path, never 500 (validated pre-write).
+- Farmer deleted under an open form → FK cascade (M013) — subsequent
+  GETs → 404.
+
+#### Rollback Strategy
+Remove `src/api/v1/farms.py` + router mount; `farms` table (M013)
+unaffected.
+
+#### Verification Commands
+```bash
+uv run pytest tests/api/test_farms.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+# live: curl matrix + polygon POST/GET round trip
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No plot linkage (M015), no area auto-computation from geometry
+(`area_hectares` stays client-provided for now), no map/tile rendering,
+no projection transforms (all WGS84).
+
+#### Verification & Notes (added on completion)
+- Gate PASSED: ruff format OK, ruff check OK, mypy 52 files OK,
+  pytest **141 passed / 0 skipped** (15 new: 3 pure-pydantic GeoJSON +
+  patch validation, 12 API matrix/round-trip); bandit on
+  `src/api/v1/farms.py` = 0 findings (replaced post-commit `assert`s with
+  defensive `NotFound` raises for B101).
+- **Live uvicorn matrix 30/30** (`live_m014.py`): 401s, farmer self
+  create + geo round trip equality, farmer_id forced to own profile,
+  cross-profile 403, no-profile 409, officer create 403, admin create +
+  duplicate 409 + unknown farmer 404, bad geo 422, per-role list
+  scoping (1/1/2 + filter), read matrix (200/200/404), patch matrix
+  (404/403/200/200) + `farmer_id` immutability, delete matrix
+  (403/403/404/204) + GET-after-delete 404.
+- Numeric(10,2) serializes fixed-scale strings (`"1.50"`, `"9.00"`) —
+  API contract note for frontend (M050+).
+- `ST_AsGeoJSON` output compared with structural equality: JSON numeric
+  equality (`0 == 0.0`) makes int/float rendering differences invisible.
+- List path = ≤3 queries regardless of row count (profile lookup for
+  farmers only + COUNT + page SELECT with per-row `ST_AsGeoJSON`) — no
+  N+1 confirmed by construction.
+- **Operational lesson:** live-verification rows (profiles/farms) left in
+  the dev DB break `tests/api/*` (they run BEFORE `test_migrations`'s
+  downgrade-base wipe) — clean live artifacts (scoped deletes) before
+  re-running the gate; the gate's own end-of-suite wipe then leaves a
+  clean head for demo seeding.
