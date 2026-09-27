@@ -49,6 +49,7 @@ Last test result: "pytest = 126 passed (farm-model 11, farmers-CRUD 15, auth 14,
 | M010 | `c477bad` |
 | M011 | `ffc6718` |
 | M012 | `0060725` |
+| M013 | `9e58818` |
 
 ## Notes / findings
 
