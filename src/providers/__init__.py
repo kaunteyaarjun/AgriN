@@ -21,9 +21,14 @@ from src.providers.errors import (
 from src.providers.registry import ProviderRegistry, default_registry, get_provider, register
 from src.providers.weather import WeatherProvider, WeatherReading, get_weather_provider
 
+# Concrete providers — explicit registration list (M021 rule: no
+# auto-discovery/entry-point magic; adding a provider = one line here).
+from src.providers.weather_demo import DemoWeatherProvider  # noqa: F401  (registers on import)
+
 __all__ = [
     "KNOWN_FAMILIES",
     "BaseProvider",
+    "DemoWeatherProvider",
     "ProviderError",
     "ProviderNotRegistered",
     "ProviderRegistry",

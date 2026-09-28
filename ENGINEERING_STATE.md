@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M022 — Weather demo provider"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021"]
-Current implementation status: "M021 done (LOCK APPROVED — design presented in chat, signed off as written, then implemented): src/providers/ = errors.py (ProviderError/NotRegistered/Unavailable/ResponseInvalid), base.py (BaseProvider metadata ClassVars family/mode/name + KNOWN_FAMILIES = the 5 settings flags + no-op aclose), registry.py (instantiable ProviderRegistry keyed (family, mode), explicit @register decorator, instance caching, default_registry, get_provider with settings-driven mode read at GET time), weather.py (reference WeatherProvider ABC + WeatherReading pydantic contract + typed get_weather_provider), __init__ exports. Pure in-process pattern: no concrete providers, no HTTP, no DB (all M022+). Retries deliberately belong to ingestion, not providers."
+Current milestone: "M023 — Weather ingestion service + storage table"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022"]
+Current implementation status: "M022 done: DemoWeatherProvider (src/providers/weather_demo.py) — deterministic sha256-seeded synthetic weather per coordinate (4-decimal precision), documented ranges temp 18.0-32.9C / humidity 40-90 / rain 0.0-11.9mm / wind 1-45kmh / 5-value condition vocabulary, WGS84 guard raises ValueError (caller bug, not ProviderError), fetched_at=now UTC, source=demo-weather-v1. Registered via @register decorator + explicit import line in src/providers/__init__.py (M021's no-auto-discovery rule: one comment-marked line per concrete provider). get_weather_provider() under default settings now resolves end-to-end."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -17,9 +17,9 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks: []
-Next milestone: "M022 — Weather demo provider (implements the M021 pattern; not locked)"
-Last verification: "M021 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 231 passed / 0 skipped (15 new provider tests, pure unit 0.7s); bandit -r -ll on src/providers + tests/providers = 0; pip-audit clean. Live (live_m021.py in-process): 10/10 ALL PASS — settings flags, register, settings-driven get_provider, typed getter + validated WeatherReading, instance caching, ProviderNotRegistered shape, aclose_all re-construct, registry isolation, unload."
-Last test result: "pytest = 231 passed (providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+Next milestone: "M023 — Weather ingestion service + storage table (P0, not locked; depends M022, M019)"
+Last verification: "M022 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 245 passed / 0 skipped (14 new demo-weather tests); bandit -r -ll on src/providers + tests/providers = 0; pip-audit clean. Live (live_m022.py in-process): 6/6 ALL PASS — settings demo flag, settings-path resolution, determinism, full Nairobi reading (24.0C/70%/9.5mm/43kmh/light_rain), distinct Mombasa point, out-of-range ValueError."
+Last test result: "pytest = 245 passed (weather-demo 14, providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)

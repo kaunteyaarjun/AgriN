@@ -39,7 +39,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M020 | Farm State API | P0 | M019, M010 | done |
 | **External providers — interfaces & demo (live = later)** | | | | |
 | M021 | Provider interface pattern (abstract base + registry) | P0 🔒 | M002 | done |
-| M022 | Weather demo provider | P0 | M021 | not-started |
+| M022 | Weather demo provider | P0 | M021 | done |
 | M023 | Weather ingestion service + storage table | P0 | M022, M019 | not-started |
 | M024 | Weather live provider (Open-Meteo) | P1 | M023 | not-started |
 | M025 | Satellite/NDVI demo provider | P0 | M021 | not-started |
@@ -3070,3 +3070,135 @@ calls, no retries, no DB, no caching TTLs, no auto-discovery.
   settings-driven `get_provider` → typed getter → validated reading,
   instance caching, `ProviderNotRegistered` shape, `aclose_all`
   re-construct, registry isolation, unload — 10/10 ALL PASS.
+
+### M022 — Weather demo provider
+
+**Priority:** P0 **Depends On:** M021
+**Status:** done
+
+#### Objective
+`src/providers/weather_demo.py`: the first concrete provider — a
+**deterministic, network-free** synthetic weather source registered on
+the default registry under `("weather", "demo")`, so
+`get_weather_provider()` works with default settings and M023's
+ingestion has something real to consume.
+
+#### Why This Milestone Exists
+Proves the M021 pattern end-to-end with a consumer-visible artifact,
+and gives the whole demo/CI story a stable backend: same coordinates
+always produce the same reading (assertable in tests, predictable in
+the demo).
+
+#### Files Expected to Be Created
+- `src/providers/weather_demo.py`
+- `tests/providers/test_weather_demo.py`
+
+#### Files Expected to Be Modified
+- `src/providers/__init__.py` (explicit registration import)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None.
+
+#### External Dependencies
+None (stdlib `hashlib` only — deliberately: the demo provider must
+work with no network, no keys, no extra packages).
+
+#### Decisions
+- **Determinism:** values derive from
+  `sha256(f"{lat:.4f},{lon:.4f}")` → one integer seed per point
+  (4-decimal precision ≈ 11 m — stable against float jitter).
+- **Documented ranges** (checked by tests): `temperature_c`
+  18.0–32.9, `humidity_pct` 40–90, `rainfall_mm_24h` 0.0–11.9,
+  `wind_speed_kmh` 1–45, `condition` from
+  `("clear", "partly_cloudy", "cloudy", "light_rain", "thunderstorm")`.
+- `fetched_at` = now (UTC); `source` = `name` = `"demo-weather-v1"`.
+- **Coordinate guard:** lat ∉ [-90,90] or lon ∉ [-180,180] →
+  `ValueError` (caller bug, not an upstream failure — not a
+  `ProviderError`).
+- **Registration:** explicit import line in
+  `src/providers/__init__.py` with a comment (grep-able list; no
+  entry-point/auto-discovery magic — honoring M021's stated rule).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `weather_demo.py`: seed helper + `DemoWeatherProvider`.
+3. Registration import in `src/providers/__init__.py`.
+4. Tests (pure unit).
+5. Gate, live, docs, state, commits.
+
+#### Acceptance Criteria
+- [x] `get_weather_provider()` under default settings returns the demo
+      provider (registration works through the normal path).
+- [x] Same coordinates → identical field values; two different
+      coordinates → at least one differing field.
+- [x] All five fields within documented ranges; `WeatherReading`
+      validates; `source == "demo-weather-v1"`.
+- [x] Out-of-range coordinates → `ValueError`.
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+All of the above (pure, fast, no DB/network).
+
+#### Integration Tests Required
+- [x] Registry path test: `get_provider("weather")` (settings default
+  `demo`) resolves to the registered class via `default_registry`.
+
+#### Security Checks Required
+- [x] No network calls, no keys, no PII at rest; coordinates are used
+      only as hash input (not logged).
+
+#### Performance Checks Required
+- [x] One sha256 per fetch (negligible); instance comes from the
+      registry cache (no per-call construction).
+
+#### Memory/Resource Checks Required
+- [x] No resources to release; `aclose` stays the base no-op.
+
+#### Failure Scenarios to Handle
+- Invalid coordinates → `ValueError` with a safe message.
+- Demo provider cannot fail otherwise (no I/O) — upstream failure
+  classes stay unexercised until M024's live provider.
+
+#### Rollback Strategy
+Delete `weather_demo.py` + its import line + tests; M021 pattern
+untouched.
+
+#### Verification Commands
+```bash
+uv run pytest tests/providers -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No HTTP/Open-Meteo (M024), no `signals` document mapping or DB writes
+(M023 owns ingestion), no realism requirements beyond the documented
+ranges (demo is allowed to look synthetic).
+
+#### Verification & Notes (added on completion)
+- Delivered as spec'd: `src/providers/weather_demo.py`
+  (`DemoWeatherProvider`, sha256 seed at 4-decimal coordinate
+  precision, documented ranges, WGS84 guard) + explicit registration
+  import in `src/providers/__init__.py` (comment-marked list, no
+  auto-discovery — M021 rule honored).
+- Tests: 14 new (`tests/providers/test_weather_demo.py`) —
+  settings-path registration (real `default_registry`; M021's
+  isolation tests unaffected since they use monkeypatched/local
+  registries), determinism (excl. `fetched_at`), distinct points
+  differ, 5-point range grid, `fetched_at` recency, coordinate guard
+  ×4, seed stability incl. 4-decimal jitter absorption. Also proved
+  `register`-as-decorator works with mypy.
+- mypy fix: `WeatherReading` fields are `float | None` by contract —
+  range test extracts locals with `is not None` guards first.
+- Gate: `scripts/check.ps1` PASSED — ruff format/check, mypy, **245
+  passed** (231 baseline + 14 new); bandit `-r -ll` on
+  `src/providers` + `tests/providers` = 0; pip-audit clean.
+- Live (`live_m022.py`, in-process): settings flag demo →
+  settings-path resolution → Nairobi reading (temp 24.0 C, humidity
+  70%, rain 9.5 mm, wind 43 km/h, light_rain) → determinism →
+  Mombasa differs (24.2 C, thunderstorm) → out-of-range ValueError —
+  6/6 ALL PASS. (Script fix during live: `dataclasses.asdict` doesn't
+  work on pydantic models — `model_dump()`.)
