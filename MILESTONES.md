@@ -32,7 +32,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M014 | Farm CRUD API + ownership authorization | P0 | M013, M010 | done |
 | M015 | Plot model & migration | P0 | M013 | done |
 | M016 | Plot CRUD API + ownership authorization | P0 | M015, M010 | done |
-| M017 | Cross-resource authorization audit (IDOR pass) | P0 | M012, M014, M016 | not-started |
+| M017 | Cross-resource authorization audit (IDOR pass) | P0 | M012, M014, M016 | done |
 | **Farm Digital Twin** | | | | |
 | M018 | Farm State schema (crop, stage, planting date, signal cache) | P0 | M015 | not-started |
 | M019 | Farm State service (compute/query) | P0 | M018 | not-started |
@@ -2147,3 +2147,196 @@ refinements beyond `ST_Covers`.
 - Containment runs as one `SELECT ST_Covers(farm.geo, ST_GeomFromGeoJSON(...))`
   — NULL farm boundary yields NULL → treated as "skip" (cannot enforce
   what isn't mapped); `covered is False` → 422 pre-write.
+
+---
+
+### M017 — Cross-resource authorization audit (IDOR pass)
+
+**Priority:** P0 **Depends On:** M012, M014, M016
+**Status:** done
+
+#### Objective
+A single cross-cutting audit of every `/api/v1` surface built so far
+(farmers, farms, plots, auth): a **route-inventory default-deny test**
+against the real app, a **cross-tenant IDOR matrix** with
+oracle-equivalence assertions, **mass-assignment (field-immutability)**
+probes, and **list-scoping** checks — plus fixes for anything the audit
+finds.
+
+#### Why This Milestone Exists
+M012/M014/M016 each tested their own resource in isolation; nobody has
+yet asserted authorization *across* resources as a system, nor that no
+route accidentally became public. This is the last P0 gate of the
+Farmer/Farm/Plot domain before the Farm Digital Twin (M018+) starts
+reading it.
+
+#### Files Expected to Be Created
+- `tests/api/test_idor.py` (the audit suite)
+
+#### Files Expected to Be Modified
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+- `src/api/v1/*.py` / `src/api/deps.py` — **only if the audit finds a
+  defect** (no speculative changes; each fix logged in Notes below)
+
+#### Database Changes
+None.
+
+#### API Changes
+None intended. Any change found necessary must preserve the documented
+status-code contract below.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new.
+
+#### Audit Scope (the contract being verified)
+
+**Public allow-list (anonymous access is correct here, nothing else):**
+`GET /`, `GET /health`, `GET /ready`, `GET /docs`, `GET /redoc`,
+`GET /openapi.json`, `GET /api/v1/ping`, `POST /api/v1/auth/login`,
+`POST /api/v1/auth/refresh`. Every other registered route must 401 for
+an anonymous caller.
+
+**Cross-tenant status-code contract (per resource, both actors `farmer`):**
+
+| Scenario | Expected |
+|---|---|
+| alpha → bravo's farmer profile (GET/PATCH/DELETE) | 404 |
+| alpha → random nonexistent profile id | 404, **body identical** to the non-owned case |
+| alpha → bravo's farm (GET/PATCH/DELETE) | 404, body identical to nonexistent-farm |
+| bravo → alpha's plot via alpha's farm URL | 404 (parent-farm authz first) |
+| bravo → alpha's plot id via **bravo's own** farm URL | 404, body identical to random plot id in that farm |
+| officer → existing resource, write verb | 403 (officers can read, so existence is not a leak) |
+| officer → nonexistent resource, any verb | 404 (row check runs first — no behavioral change needed) |
+| admin | full access everywhere |
+
+**Mass assignment (immutable fields must ignore client input):**
+`PATCH /farmers/{id}` cannot change `user_id` (or the linked user's
+`role`/`email`/`password_hash`); `PATCH /farms/{id}` cannot change
+`farmer_id`; `PATCH /farms/{id}/plots/{id}` cannot change `farm_id`.
+
+**List scoping:** a farmer's `?farmer_id=<other>` filter on
+`GET /api/v1/farms` must be ignored (auto-scoped to own profile);
+`GET /api/v1/farmers` stays 403 for farmers; a farmer with **no**
+profile gets an empty farm list (200) and a 409 on farm-create.
+
+**Robustness:** malformed UUID in path/query → 422 (never 500);
+anonymous callers get 401 **before** body/path validation wherever the
+dependency chain allows (asserted, findings noted not "fixed" if ordering
+differs — a 422 for anonymous is not a security hole, but record it).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. DISCOVER pass: enumerate `create_app().routes`; grep every route
+   decorator for auth dependencies; confirm the allow-list above matches
+   reality (any extra public route = finding).
+3. Write `tests/api/test_idor.py` using the established fixture pattern
+   (seed alpha/bravo/officer/admin + farm A/alpha with plots, farm
+   B/bravo with a plot; scoped cleanup by user email; `_db` fixture
+   skipping when Postgres is unreachable).
+4. Run the suite; triage every failure as (a) test bug, or (b) real
+   authorization defect → fix in `src/`, log it in Notes, re-run.
+5. Full quality gate; live verification; docs + state + commit.
+
+#### Acceptance Criteria
+- [x] Route-inventory test: every non-allow-listed route of the **real**
+      app returns 401 anonymously (no accidentally-public endpoint).
+- [x] Cross-tenant matrix green: all non-owned farmer access → 404 with
+      body byte-identical to the nonexistent-id case (no oracle).
+- [x] Mass-assignment probes green: `user_id`/`role`/`farmer_id`/`farm_id`
+      unchanged after PATCH attempts carrying them.
+- [x] List-scoping probes green (including the no-profile farmer).
+- [x] Malformed UUID → 422, never 500.
+- [x] Full quality gate green; every finding fixed or explicitly
+      documented as accepted with rationale.
+
+#### Unit Tests Required
+- (Covered by the API-level tests below; schema immutability is asserted
+  through response + re-fetch rather than model units.)
+
+#### Integration Tests Required
+- The whole of `tests/api/test_idor.py` against the dev Postgres.
+
+#### Security Checks Required (Section 9 items in scope)
+- [ ] Authentication bypass / accidentally-public routes (inventory test).
+- [ ] IDOR + authorization flaws (cross-tenant matrix, oracle equality).
+- [ ] Mass assignment / excessive data exposure (immutable-field probes;
+      response models are explicit Pydantic schemas — re-verify no model
+      leaks `password_hash`).
+- [ ] Missing input validation → 422 not 500 (malformed UUID probes).
+- [ ] Sensitive data in error responses (assert error bodies carry only
+      `error_code` + `message`).
+- [ ] Rate-limit gaps on `POST /auth/login` — **flagged for M055**, not
+      fixed here (out of M017 scope).
+
+#### Performance Checks Required
+- Audit tests are test-only; no production-path change expected. If a
+  fix touches a query, re-check it stays ≤ the previous query count
+  (authz stays one joined SELECT).
+
+#### Memory/Resource Checks Required
+None significant (test-only milestone unless a fix lands).
+
+#### Failure Scenarios to Handle
+- A route found public → treat as defect: add the auth dependency, note
+  it in Notes, keep the inventory test as the regression guard.
+- Fixture pollution across tests (established lesson: scope every delete
+  to seeded rows).
+- Inventory test hitting routes with path params → substitute a random
+  UUID so 401 (not 422/500) is what's being measured.
+
+#### Rollback Strategy
+Test-only: delete `tests/api/test_idor.py` + revert the roadmap row. Any
+src fix reverts independently (one commit per fix if one is needed).
+
+#### Verification Commands
+```bash
+uv run pytest tests/api/test_idor.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No new endpoints, no schema changes, no rate limiting (M055), no
+frontend, no refactors beyond defect fixes the audit forces.
+
+#### Verification & Notes (added on completion)
+- Gate PASSED: ruff format OK, ruff check OK, mypy OK, pytest
+  **178 passed / 0 skipped** (+13 new IDOR tests); bandit on
+  `tests/api/test_idor.py` = 0 medium/high (66 low = `assert` in test
+  code, accepted); `pip-audit` = no known vulnerabilities.
+- **Live uvicorn 8/8** (`live_m017.py` over real HTTP): anonymous
+  inventory 15/15 non-public operations → 401, public allow-list
+  reachable, live login ×2, cross-tenant GET 404 with oracle-free body,
+  cross-tenant PATCH 404, mass-assignment PATCH 200 but DB owner
+  unchanged, malformed UUID → 422.
+- **No authorization defects found in `src/` — zero production-code
+  changes.** The audit confirmed the M012/M014/M016 contract as designed:
+  - Inventory is driven from the real app's OpenAPI schema (21
+    operations; 6 API-public + 4 docs routes + `/` in the allow-list),
+    so any future route missing its auth dependency fails
+    `test_every_non_public_operation_requires_auth`.
+  - Anonymous 401 fires **before** body and path-parameter validation on
+    every operation (empirically asserted — dependency ordering holds).
+  - Farm-create mismatch guard (farmer naming a foreign `farmer_id`)
+    returns the same 403 whether the id exists or is random → no
+    existence oracle.
+- **Accepted observations (documented, not fixed):**
+  1. Starlette's route-mismatch 404 (`{"detail": "Not Found"}`) has a
+     different *shape* than app errors (`error_code`/`message`). Not a
+     leak (both plainly mean not-found), but noted for M055 (optional
+     `HTTPException` handler for shape unification).
+  2. Officer sees 404 for a missing row vs 403 for an existing one —
+     accepted: officers can already read every farm/profile, so nothing
+     is revealed. Contract asserted in
+     `test_officer_write_ordering_documents_no_new_oracle`.
+  3. Login/refresh rate limiting remains flagged for **M055** (unchanged
+     from M009).
+- Two initial failures were **test bugs**, not defects: a comparison
+  path missing the `/plots` segment, and asserting 403 on `GET /farms`
+  (farmers legitimately list their own farms — the staff-only list is
+  `GET /farmers`). Fixed and re-run to green.

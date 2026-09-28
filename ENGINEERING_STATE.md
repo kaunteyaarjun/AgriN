@@ -4,20 +4,22 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M017 — Cross-resource authorization audit (IDOR pass)"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016"]
-Current implementation status: "M016 done: /api/v1/farms/{farm_id}/plots CRUD (nested routes) — parent-farm authz via M014's _authorized_farm (owner farmer/admin, officer read-only, non-owner farmer 404 no oracle), plot ids always scoped to URL farm (cross-farm 404), duplicate (farm_id,name) -> 409, farmer_id/farm_id immutable, GeoJSON payloads reused from M014, plot-within-farm containment via ST_Covers (outside -> 422 pre-write, NULL farm boundary -> skip)."
+Current milestone: "M018 — Farm State schema (crop, stage, planting date, signal cache)"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017"]
+Current implementation status: "M017 done: cross-resource authorization audit (IDOR pass) — tests/api/test_idor.py (13 tests) covering the whole /api/v1 surface: route-inventory default-deny driven from the real app's OpenAPI schema (15 non-public ops -> 401 anon; allow-list exact), cross-tenant profile/farm/plot 404 with byte-identical body vs missing id (no oracle), mass-assignment probes (user_id/role/password_hash/farmer_id/farm_id immutable, DB-verified), list scoping + no-profile farmer, malformed UUID -> 422 (anon -> 401), sanitized error bodies, officer 404/403 ordering. No defects found in src/ — zero production-code changes."
 Known bugs: []
-Known security issues: []
+Known security issues:
+  - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
 Known performance issues: []
 Known resource/memory issues:
   - "Residual (documented, not reproducible locally): asyncio.wait_for cancelling /ready's check mid real-socket cleanup; SQLAlchemy pool handles greenlet cancellation — re-measure in M056. Refused-connection path asserted clean (checkedout()==0)."
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
+  - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding)."
 Blocked tasks: []
-Next milestone: "M017 — Cross-resource authorization audit (IDOR pass)"
-Last verification: "M016 gate PASSED with live dev DB (65432, PostGIS 3.4): ruff format OK, ruff check OK, mypy 57 files OK, pytest 165 passed / 0 skipped (13 new plot-API); bandit on src/api/v1/plots.py = 0 findings. Live uvicorn matrix 29/29 (containment 422/skip, cross-farm 404, full role matrix) + live artifact cleanup before final gate."
-Last test result: "pytest = 165 passed (plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+Next milestone: "M018 — Farm State schema (crop, stage, planting date, signal cache)"
+Last verification: "M017 gate PASSED with live dev DB (65432, PostGIS 3.4): ruff format OK, ruff check OK, mypy OK, pytest 178 passed / 0 skipped (13 new IDOR); bandit on tests/api/test_idor.py 0 medium/high; pip-audit clean. Live uvicorn 8/8 (anon inventory 15/15 -> 401, allow-list exact, cross-tenant 404 oracle-free, mass-assign ignored in DB, malformed uuid 422) + live artifact cleanup before final gate."
+Last test result: "pytest = 178 passed (idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -116,3 +118,11 @@ Last test result: "pytest = 165 passed (plots-API 13, farms-API 15, farmers-API 
   teardowns used unscoped `DELETE FROM users`; now scoped to seeded ids
   (FK cascade cleans their farmer rows). House rule: test cleanup must
   always scope deletes to rows the test created.
+- 2026-09-28 (M017): This host has **two** `Temp\opencode` directories
+  (`C:\Users\91797\...` and `C:\Personal\91797\...`); files written via
+  the file tool landed in the latter. When running a temp script, use
+  the exact path reported at write time, not `$env:TEMP\opencode`.
+- 2026-09-28 (M017): `live_m017.py` + the audit live checks run against
+  a real `uvicorn src.main:app --port 8000` child process — kill it by
+  the PID from `netstat -ano | Select-String ":8000.*LISTENING"` (M009
+  lesson) before re-running tests.
