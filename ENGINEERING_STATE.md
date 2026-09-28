@@ -60,6 +60,7 @@ Last test result: "pytest = 245 passed (weather-demo 14, providers 15, farm-stat
 | M019 | `293101c` |
 | M020 | `eef7aa6` |
 | M021 | `890755e` |
+| M022 | `90ea7ce` |
 
 ## Notes / findings
 
