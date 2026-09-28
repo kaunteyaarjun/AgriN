@@ -13,9 +13,9 @@ Real upstreams (Open-Meteo) land in M024 under ``("weather", "live")``.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 
+from src.providers._demo import check_wgs84, point_seed
 from src.providers.registry import register
 from src.providers.weather import WeatherProvider, WeatherReading
 
@@ -30,12 +30,6 @@ CONDITIONS: tuple[str, ...] = (
 )
 
 
-def _seed(lat: float, lon: float) -> int:
-    """Stable 64-bit seed per point (4-decimal ≈ 11 m precision)."""
-    digest = hashlib.sha256(f"{lat:.4f},{lon:.4f}".encode()).hexdigest()
-    return int(digest[:16], 16)
-
-
 @register
 class DemoWeatherProvider(WeatherProvider):
     """Synthetic weather for any WGS84 point. No I/O by design."""
@@ -44,9 +38,8 @@ class DemoWeatherProvider(WeatherProvider):
     name = DEMO_NAME
 
     async def fetch(self, lat: float, lon: float) -> WeatherReading:
-        if not -90 <= lat <= 90 or not -180 <= lon <= 180:
-            raise ValueError(f"coordinates out of WGS84 bounds: lat={lat}, lon={lon}")
-        seed = _seed(lat, lon)
+        check_wgs84(lat, lon)
+        seed = point_seed(lat, lon)
         return WeatherReading(
             fetched_at=datetime.now(UTC),
             source=self.name,

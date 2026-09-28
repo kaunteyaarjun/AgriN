@@ -17,7 +17,8 @@ from src.providers import (
     get_provider,
     get_satellite_provider,
 )
-from src.providers.satellite_demo import DEMO_NAME, _seed
+from src.providers._demo import point_seed as _seed
+from src.providers.satellite_demo import DEMO_NAME
 
 NAIROBI = (-1.2921, 36.8219)
 MOMBASA = (-4.0435, 39.6682)

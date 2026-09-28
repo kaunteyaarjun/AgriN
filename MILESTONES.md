@@ -45,7 +45,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M025 | Satellite/NDVI demo provider | P0 | M021 | done |
 | M026 | Satellite ingestion service + storage table | P0 | M025, M019 | done |
 | M027 | Satellite live provider | P1 | M026 | not-started |
-| M028 | Soil demo provider | P0 | M021 | not-started |
+| M028 | Soil demo provider | P0 | M021 | done |
 | M029 | Soil ingestion service + storage table | P0 | M028, M019 | not-started |
 | M030 | Soil live provider | P2 | M029 | not-started |
 | **Normalization** | | | | |
@@ -3763,3 +3763,176 @@ API endpoints, no plot-level overlays (M047+), no soil family (M029).
   ndvi 0.82 in range, weather key survived, satellite cache doc
   complete, no_geo clean) → `--farm` single mode `ingested` →
   cleanup left `satellite observations remaining=0`. ALL PASS.
+---
+
+### M028 — Soil demo provider
+
+**Priority:** P0 **Depends On:** M021
+**Status:** done
+
+#### Objective
+Third family pair, same shape as M025: `src/providers/soil.py`
+(`SoilReading`, abstract `SoilProvider.fetch`, typed
+`get_soil_provider`) + `src/providers/soil_demo.py` — a
+deterministic, network-free synthetic soil source registered under
+`("soil", "demo")` so `get_soil_provider()` resolves with default
+settings and M029's ingestion has something real to consume.
+
+**Rule-of-three refactor rides along:** this milestone's demo provider
+is the *third* copy of the coordinate seed helper and the WGS84 guard
+(M022 weather, M025 satellite) — both extract into a shared
+`src/providers/_demo.py` (`point_seed`, `check_wgs84`), and the two
+existing demo providers are switched over (import-only change; their
+behavior and tests stay green).
+
+#### Why This Milestone Exists
+Completes the demo trio (weather/satellite/soil) the farm-state cache
+was designed for (M019's `signals` slots), and forces the pattern
+through its third instance — the point where copy-paste drift would
+start, so the shared helpers land *before* M029/M030.
+
+#### Files Expected to Be Created
+- `src/providers/soil.py`
+- `src/providers/soil_demo.py`
+- `src/providers/_demo.py`
+- `tests/providers/test_soil.py`
+
+#### Files Expected to Be Modified
+- `src/providers/weather_demo.py`, `src/providers/satellite_demo.py`
+  (use shared `_demo` helpers — internal refactor, public behavior
+  unchanged)
+- `tests/providers/test_weather_demo.py`,
+  `tests/providers/test_satellite.py` (seed-helper import only)
+- `src/providers/__init__.py` (contract exports + registration import)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None.
+
+#### External Dependencies
+None (stdlib `hashlib` only — network-free demo rule).
+
+#### Decisions
+- **Contract mirrors weather/satellite:** required `fetched_at` (UTC)
+  + `source`; optional payload — `soil_moisture_pct` (plant-available
+  water, %), `ph`, `soil_temperature_c`, `nitrogen_kg_ha` (available
+  N). Soil is in-situ: no `captured_at` (fetch time == observation
+  time, like weather).
+- **No pydantic range constraints** (consistent with the other two
+  families); documented demo ranges are test-enforced; quality policy
+  = M031.
+- **Documented ranges** (checked by tests): `soil_moisture_pct`
+  20.0–60.0, `ph` 5.5–7.5, `soil_temperature_c` 12.0–28.0 (all 1
+  decimal), `nitrogen_kg_ha` 20–120 (integer).
+- **Determinism:** sha256 of `f"{lat:.4f},{lon:.4f}"` via the new
+  shared `point_seed()`; WGS84 guard via `check_wgs84()` (raises the
+  same `ValueError` message as before — caller bug, not
+  `ProviderError`).
+- `fetched_at` = now (UTC); `source` = `name` = `"demo-soil-v1"`.
+- **Registration:** one comment-marked import line in
+  `src/providers/__init__.py` (M021 no-auto-discovery rule).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. Shared `_demo.py` (`point_seed`, `check_wgs84`); switch
+   `weather_demo.py` + `satellite_demo.py` to it; update the two
+   existing tests' import only.
+3. `soil.py` contract; `soil_demo.py` implementation.
+4. Exports + registration line in `src/providers/__init__.py`.
+5. Tests (`test_soil.py`; existing suites must stay green).
+6. Gate, live check, docs, state, commits.
+
+#### Acceptance Criteria
+- [x] `get_soil_provider()` under default settings returns the demo
+      provider through the normal registry path.
+- [x] Same coordinates → identical payload; two different coordinates
+      → differing payload.
+- [x] All four fields within documented ranges; `SoilReading`
+      validates; `source == "demo-soil-v1"`; `fetched_at` recent UTC.
+- [x] Out-of-range coordinates → `ValueError` (via shared
+      `check_wgs84`).
+- [x] Weather + satellite demo suites still pass after the helper
+      extraction (same values, same guard message).
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+All of the above (pure, fast, no DB/network).
+
+#### Integration Tests Required
+- [x] Registry path test: `get_provider("soil")` (settings default
+  `demo`) resolves via the real `default_registry`.
+
+#### Security Checks Required
+- [x] No network, no keys, no PII; coordinates used only as hash input
+      (not logged).
+
+#### Performance Checks Required
+- [x] One sha256 per fetch; provider instance served from the registry
+      cache.
+
+#### Memory/Resource Checks Required
+- [x] No resources to release; `aclose` stays the base no-op.
+
+#### Failure Scenarios to Handle
+- Invalid coordinates → `ValueError` with the shared safe message.
+- Demo provider cannot fail otherwise (no I/O); upstream failure
+  classes stay unexercised until M030's live provider.
+
+#### Rollback Strategy
+`git revert` the milestone commit (pure refactor + additive files; no
+DB/API surface). Shared `_demo.py` removal is safe only when all
+three demo providers revert together.
+
+#### Verification Commands
+```bash
+uv run pytest tests/providers -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No live soil API (M030), no `signals` document mapping or DB writes
+(M029 owns soil ingestion), no moisture/EC/NPK measurement science or
+quality gating (M031+), no per-plot soil differences (soil is
+per-farm, M019 grain decision).
+
+#### Verification & Notes (added on completion)
+- Delivered as spec'd: `src/providers/soil.py` (`SoilReading` —
+  `soil_moisture_pct`/`ph`/`soil_temperature_c`/`nitrogen_kg_ha`
+  optional, no `captured_at` since soil is in-situ; abstract
+  `SoilProvider.fetch`; typed `get_soil_provider`) +
+  `src/providers/soil_demo.py` (`DemoSoilProvider`, `demo-soil-v1`,
+  documented ranges 20.0–60.0 / 5.5–7.5 / 12.0–28.0 (1 dp) and
+  20–120 integer N) + exports/registration line.
+- **Rule-of-three extraction landed:** new shared
+  `src/providers/_demo.py` (`point_seed`, `check_wgs84` — identical
+  sha256 scheme and ValueError message); `weather_demo.py` +
+  `satellite_demo.py` switched over (hashlib/`_seed`/inline-guard
+  removed from both); their tests now import `point_seed as _seed`
+  (import-only change). Behavior proven unchanged: full suites green
+  (weather 14 + satellite 14) and the live cross-check reproduced the
+  exact M022/M025 values for Nairobi (temp 24.0 C, ndvi 0.46).
+- isort interleaving (demo import right after its family contract)
+  produced a correct sorted block with the three registration lines —
+  comment reworded to describe the grep-able `registers on import`
+  pattern rather than a contiguous block.
+- Tests: 15 new (`tests/providers/test_soil.py`) — settings-path
+  registration, determinism, distinct points, 5-point range grid with
+  1-dp/integer assertions, fetched_at recency, coordinate guard ×4,
+  shared `point_seed` stability incl. jitter absorption, plus a
+  three-family extraction guard test. **58 total** in
+  `tests/providers`.
+- Gate: `scripts/check.ps1` PASSED — ruff format/check, mypy, **295
+  passed** (280 baseline + 15 new); bandit `-r -ll` on `src/providers`
+  + `tests/providers` = 0; pip-audit clean.
+- Live (`live_m028.py`, in-process): **14/14 ALL PASS** — settings
+  flag demo → registry + typed accessor caching → Nairobi reading
+  (moisture 28.5, ph 6.4, temp 16.1, N 48) → determinism → Mombasa
+  differs (moisture 23.2, ph 5.5) → shared-guard ValueError →
+  weather + satellite demos still fetch post-extraction with their
+  original M022/M025 values.
+- **Ordering note:** executed P0-first (human-confirmed 2026-09-28):
+  M024/M027 (live providers, P1) intentionally deferred until the
+  P0 trio (M025/M026/M028 + M029) is complete.

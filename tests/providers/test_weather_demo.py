@@ -16,7 +16,8 @@ from src.providers import (
     get_provider,
     get_weather_provider,
 )
-from src.providers.weather_demo import CONDITIONS, DEMO_NAME, _seed
+from src.providers._demo import point_seed as _seed
+from src.providers.weather_demo import CONDITIONS, DEMO_NAME
 
 NAIROBI = (-1.2921, 36.8219)
 MOMBASA = (-4.0435, 39.6682)

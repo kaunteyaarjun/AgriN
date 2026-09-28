@@ -14,19 +14,13 @@ Real upstreams (live NDVI API) land in M027 under ``("satellite",
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 
+from src.providers._demo import check_wgs84, point_seed
 from src.providers.registry import register
 from src.providers.satellite import SatelliteProvider, SatelliteReading
 
 DEMO_NAME = "demo-satellite-v1"
-
-
-def _seed(lat: float, lon: float) -> int:
-    """Stable 64-bit seed per point (4-decimal ≈ 11 m precision)."""
-    digest = hashlib.sha256(f"{lat:.4f},{lon:.4f}".encode()).hexdigest()
-    return int(digest[:16], 16)
 
 
 @register
@@ -37,9 +31,8 @@ class DemoSatelliteProvider(SatelliteProvider):
     name = DEMO_NAME
 
     async def fetch(self, lat: float, lon: float) -> SatelliteReading:
-        if not -90 <= lat <= 90 or not -180 <= lon <= 180:
-            raise ValueError(f"coordinates out of WGS84 bounds: lat={lat}, lon={lon}")
-        seed = _seed(lat, lon)
+        check_wgs84(lat, lon)
+        seed = point_seed(lat, lon)
         now = datetime.now(UTC)
         return SatelliteReading(
             fetched_at=now,
