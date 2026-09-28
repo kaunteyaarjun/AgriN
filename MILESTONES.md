@@ -43,7 +43,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M023 | Weather ingestion service + storage table | P0 | M022, M019 | done |
 | M024 | Weather live provider (Open-Meteo) | P1 | M023 | not-started |
 | M025 | Satellite/NDVI demo provider | P0 | M021 | done |
-| M026 | Satellite ingestion service + storage table | P0 | M025, M019 | not-started |
+| M026 | Satellite ingestion service + storage table | P0 | M025, M019 | done |
 | M027 | Satellite live provider | P1 | M026 | not-started |
 | M028 | Soil demo provider | P0 | M021 | not-started |
 | M029 | Soil ingestion service + storage table | P0 | M028, M019 | not-started |
@@ -3565,3 +3565,201 @@ overlays (M047+).
   Nairobi reading (ndvi 0.46, cloud 49) → determinism → Mombasa
   differs (ndvi 0.72, cloud 81) → source/time semantics →
   out-of-range `ValueError`.
+---
+
+### M026 — Satellite ingestion service + storage table
+
+**Priority:** P0 **Depends On:** M025, M019
+**Status:** done
+
+#### Objective
+Satellite vertical mirrors the weather one: rev `0008` creates the
+append-only `satellite_observations` history table;
+`src/ingestion/satellite.py` turns a `SatelliteReading` into (a) an
+observation row and (b) a `signals.satellite` cache merge that
+**preserves every other family key** (notably `weather`, M023);
+`workers/satellite_ingest.py` runs it for all farms or one.
+
+#### Why This Milestone Exists
+The farm-state cache (M019) reserves a `satellite` slot that only an
+ingestion service can populate, and NDVI history is what crop-health
+views (M047+) and M031's quality gating read. It also proves the
+ingestion pattern is family-agnostic: same statuses, same failure
+policy, different payload.
+
+#### Files Expected to Be Created
+- `src/models/satellite_observation.py`
+- `alembic/versions/0008_satellite_observations.py` (hand-written)
+- `src/ingestion/satellite.py`
+- `workers/satellite_ingest.py`
+- `tests/ingestion/test_satellite_ingestion.py`
+
+#### Files Expected to Be Modified
+- `src/models/__init__.py` (export `SatelliteObservation`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+`alembic` revision **0008** (down_revision `0007`), one table:
+
+```
+satellite_observations
+  id            uuid PK (client-side uuid4)
+  farm_id       uuid NOT NULL FK → farms.id ON DELETE CASCADE
+  provider      varchar(40) NOT NULL
+  observed_at   timestamptz NOT NULL  -- SCENE CAPTURE time
+                (= reading.captured_at, fallback reading.fetched_at)
+  ndvi          float NULL
+  cloud_cover_pct float NULL
+  created_at    timestamptz NOT NULL, server_default now()
+  INDEX (farm_id, observed_at) ASC   -- same convention as 0007
+```
+
+- Append-only: no `updated_at`, no updates through the service.
+- **No `raw_units` JSONB** (deviation from the weather table, by
+  design): NDVI is unitless and cloud is explicitly pct — the full
+  payload already lives in columns; M031 has nothing unit-wise to
+  recover here.
+- `tests/test_migrations.py`'s derived-head assertion auto-covers the
+  new revision (no pin to update).
+
+#### API Changes / Frontend Changes
+None (API for observations is not yet a milestone; overlays M047+).
+
+#### External Dependencies
+None (stdlib `hashlib` demo provider only).
+
+#### Decisions
+- **Ingestion logic mirrors `src/ingestion/weather.py` line-for-line**
+  in structure: fetch-before-write (`ProviderError` → zero writes),
+  observation commit then cache merge (two-step, crash healed next
+  run), centroid via `ST_X/ST_Y(ST_Centroid(Farm.geo))`, per-farm
+  try/except + rollback isolation in the batch, `NotFound` for unknown
+  farms, `skipped_no_geo` without calling the provider.
+- **`observed_at` = `captured_at or fetched_at`** — the scene time is
+  the observation time for satellite; fallback keeps live providers
+  (M027) that omit `captured_at` working.
+- **`signals.satellite` doc:** `{ndvi, cloud_cover_pct, observed_at
+  (ISO), source}`; `refreshed_at` = `reading.fetched_at` (fetch time,
+  per M019's column semantics).
+- **Result dataclasses duplicated** from the weather module
+  (`IngestResult`/`IngestSummary`, same shapes): keeps this milestone
+  purely additive (rollback = delete files, zero M023 regression
+  surface). Rule of three — extract to a shared `src/ingestion`
+  helper when M029 (soil) makes the third copy.
+- **Worker CLI mirrors `workers/weather_ingest.py`:** `--farm`
+  optional, one status line per farm + summary, exit 0 even with
+  per-farm failures.
+- Index direction/`alembic check` parity lesson from M023 carries
+  over (ASC index, hand-written migration, `alembic check` must say
+  "No new upgrade operations detected").
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. Model + export; hand-written migration 0008.
+3. `src/ingestion/satellite.py` (signals doc, result types, per-farm
+   + batch ingest).
+4. `workers/satellite_ingest.py`.
+5. Tests (mirror `tests/ingestion/test_weather_ingestion.py`).
+6. `alembic check`, gate, live check, docs, state, commits.
+
+#### Acceptance Criteria
+- [x] Ingest on a geo farm → observation row + `signals.satellite`
+      populated; pre-existing `signals.weather` key survives merge.
+- [x] Farm with NULL geo → `skipped_no_geo`, no provider call, no row.
+- [x] Failing provider (fake) → `provider_error`, zero rows written.
+- [x] Second ingest → second observation row (append-only history);
+      `observed_at` equals the scene time (demo: `captured_at`).
+- [x] Unknown farm → `NotFound`.
+- [x] Worker end-to-end on dev DB (live check), incl. `--farm` mode.
+- [x] `alembic check` clean; full quality gate green.
+
+#### Unit Tests Required
+- [x] `satellite_signals_doc` mapping (ISO `observed_at` from
+      `captured_at`, source, both payload fields).
+
+#### Integration Tests Required
+All acceptance paths above against dev Postgres; seeded rows cleaned
+by scoped user delete (FK cascade reaches farms → satellite
+observations + signal caches).
+
+#### Security Checks Required
+- [x] No authz surface (no HTTP); worker is a trusted local process.
+- [x] No secrets in logs — status lines carry farm id + status only.
+
+#### Performance Checks Required
+- [x] Per farm: 1 provider call + ≤5 small queries (same shape as
+      M023); sequential batch (dozens at demo scale).
+
+#### Memory/Resource Checks Required
+- [x] One session for the whole worker run, closed at the end;
+      engine disposed on exit.
+
+#### Failure Scenarios to Handle
+- Invalid farm id → `NotFound`; no geometry → skip; provider raises
+  `ProviderError` → status without writes; anything else →
+  `failed` + rollback, batch continues.
+- Fixture house rule (M023 lesson): every DB-touching test requests
+  `_db`, even without seeded users.
+
+#### Rollback Strategy
+`alembic downgrade 0007`, delete the new files + export line; cache
+merges written under `signals.satellite` remain valid JSON (keys are
+family-namespaced).
+
+#### Verification Commands
+```bash
+uv run pytest tests/ingestion tests/test_migrations.py -v
+uv run alembic check
+uv run python -m workers.satellite_ingest --farm <uuid>
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No live satellite API (M027), no quality gating/cloud masking/
+compositing/NDVI time series (M031+), no scheduler/cron, no ingestion
+API endpoints, no plot-level overlays (M047+), no soil family (M029).
+
+#### Verification & Notes (added on completion)
+- Delivered as spec'd: rev 0008 `satellite_observations`
+  (hand-written, `alembic check` = "No new upgrade operations
+  detected"), `SatelliteObservation` + export, `src/ingestion/satellite.py`
+  (`satellite_signals_doc` / `ingest_satellite_for_farm` /
+  `ingest_satellite_for_all`, logger `agrin.ingestion.satellite`),
+  `workers/satellite_ingest.py` (`--farm` optional).
+- **Cross-family merge proved both directions:** M023's test proved
+  `satellite` survives a weather merge; this milestone's test +
+  live check prove `weather` survives a satellite merge (pre-seeded
+  `{"weather": {"temperature_c": 21.5}}` intact after ingest).
+- `observed_at` = `captured_at or fetched_at` (scene time) — stored on
+  the row AND in the signals doc; `refreshed_at` = `fetched_at` (M019
+  column semantics). Two unit tests pin the preference and the
+  `captured_at=None` fallback.
+- **Deliberate deviation from the weather table:** no `raw_units`
+  JSONB (NDVI unitless, cloud explicit pct — payload fully covered by
+  columns; nothing for M031 to recover). `IngestResult`/`IngestSummary`
+  duplicated from the weather module to keep this milestone purely
+  additive — rule of three: extract to a shared `src/ingestion` helper
+  when M029 (soil) makes the third copy.
+- M023 fixture house rule applied from the start: every DB-touching
+  test requests `_db` (incl. `test_unknown_farm_raises_not_found`).
+- Tests: 11 new (`tests/ingestion/test_satellite_ingestion.py`) —
+  signals-doc mapping + captured-at fallback, merge preserving
+  `weather` key + `refreshed_at == fetched_at`, default-settings
+  provider path (proves M025 wiring), append-only history (2 rows/1
+  cache), no-geo skip without provider call, provider-failure zero
+  writes, `NotFound`, batch counts across 3 farms, batch isolation
+  (`RuntimeError` → `failed` + rollback, batch continues), worker
+  `_run(farm)` exit code + printed status. 280 total.
+- Gate: `scripts/check.ps1` PASSED — ruff format/check, mypy, **280
+  passed** (269 baseline + 11 new); bandit `-r -ll` on `src/ingestion`
+  + `src/models` + `workers` + `tests/ingestion` = 0; pip-audit clean.
+- Live (live_m026.py + real worker): seeded 2 farms (geo/no-geo,
+  weather key pre-seeded) → `python -m workers.satellite_ingest` ×2
+  (both: `ingested=1 skipped_no_geo=1 provider_error=0 failed=0`;
+  verify after run 2 = **7/7**: 2 observation rows = append-only,
+  ndvi 0.82 in range, weather key survived, satellite cache doc
+  complete, no_geo clean) → `--farm` single mode `ingested` →
+  cleanup left `satellite observations remaining=0`. ALL PASS.

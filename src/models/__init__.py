@@ -12,6 +12,7 @@ from src.models.farm_signal_cache import FarmSignalCache
 from src.models.farmer import Farmer
 from src.models.plot import Plot
 from src.models.plot_state import GROWTH_STAGES, PlotState
+from src.models.satellite_observation import SatelliteObservation
 from src.models.user import User, UserRole
 from src.models.weather_observation import WeatherObservation
 
@@ -23,6 +24,7 @@ __all__ = [
     "GROWTH_STAGES",
     "Plot",
     "PlotState",
+    "SatelliteObservation",
     "User",
     "UserRole",
     "WeatherObservation",
