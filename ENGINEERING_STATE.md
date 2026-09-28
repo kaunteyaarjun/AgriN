@@ -64,6 +64,7 @@ Last test result: "pytest = 295 passed (soil 15, satellite-ingestion 11, satelli
 | M023 | `31d3988` |
 | M025 | `15d5f73` |
 | M026 | `33625fe` |
+| M028 | `8913402` |
 
 ## Notes / findings
 
