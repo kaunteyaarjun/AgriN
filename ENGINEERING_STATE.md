@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M021 — Provider interface pattern (abstract base + registry) [LOCKED — awaiting human confirmation]"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020"]
-Current implementation status: "M020 done: Farm State API — src/api/v1/farm_state.py, tag farm-state, 4 routes (GET /farms/{id}/state -> 200 FarmStateView; PUT/DELETE /farms/{id}/plots/{id}/state -> 204; PUT /farms/{id}/signals -> 204). Every route runs M014's _authorized_farm/_authorized_plot BEFORE the M019 service (matrix: admin/owner write, officer read-only 403, non-owner 404 no-oracle, anon 401). Validation: growth_stage via field_validator against GROWTH_STAGES (Literal unpacking not mypy-safe), crop 1-80 = DB String(80), signals JSON cap 50k chars, naive refreshed_at gets UTC attached (timestamptz). No date policy (future planted_on allowed, M019 decision). Both 422 shapes documented (pydantic detail vs AppError error_code)."
+Current milestone: "M022 — Weather demo provider"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021"]
+Current implementation status: "M021 done (LOCK APPROVED — design presented in chat, signed off as written, then implemented): src/providers/ = errors.py (ProviderError/NotRegistered/Unavailable/ResponseInvalid), base.py (BaseProvider metadata ClassVars family/mode/name + KNOWN_FAMILIES = the 5 settings flags + no-op aclose), registry.py (instantiable ProviderRegistry keyed (family, mode), explicit @register decorator, instance caching, default_registry, get_provider with settings-driven mode read at GET time), weather.py (reference WeatherProvider ABC + WeatherReading pydantic contract + typed get_weather_provider), __init__ exports. Pure in-process pattern: no concrete providers, no HTTP, no DB (all M022+). Retries deliberately belong to ingestion, not providers."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -17,9 +17,9 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks: []
-Next milestone: "M021 — Provider interface pattern (abstract base + registry) [LOCKED 🔒 — Master Prompt: confirm architecture + interfaces before starting; do NOT auto-continue]"
-Last verification: "M020 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 216 passed / 0 skipped (14 new farm-state API tests); bandit -r -ll on src/api + src/services + touched tests = 0; pip-audit clean. Live: real uvicorn :8000 + live_m020.py — 20 checks ALL PASS (full authz matrix x4 routes, happy view days=2462, both 422 shapes, signals round trip with naive tz, idempotent delete); server killed by PID."
-Last test result: "pytest = 216 passed (farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+Next milestone: "M022 — Weather demo provider (implements the M021 pattern; not locked)"
+Last verification: "M021 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 231 passed / 0 skipped (15 new provider tests, pure unit 0.7s); bandit -r -ll on src/providers + tests/providers = 0; pip-audit clean. Live (live_m021.py in-process): 10/10 ALL PASS — settings flags, register, settings-driven get_provider, typed getter + validated WeatherReading, instance caching, ProviderNotRegistered shape, aclose_all re-construct, registry isolation, unload."
+Last test result: "pytest = 231 passed (providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -141,8 +141,13 @@ Last test result: "pytest = 216 passed (farm-state-api 14, farm-state-service 10
   tracking; also hardened `tests/models/test_plot.py` to scope its
   `Block A` reads by `farm_id`. The gate's migration round-trip wiped
   the residue automatically.
-- 2026-09-28 (M020): session stopped before M021 (Provider interface
-  pattern, 🔒) per the Master Engineering Prompt — architecture and
-  interface decisions need human confirmation before work starts.
-  Resume by confirming this state file, then spec M021 in
-  `MILESTONES.md` (roadmap → in-progress) and run the loop.
+- 2026-09-28 (M021): **ruff 0.16.9 formats Markdown code blocks** —
+  `scripts/check.ps1` runs `ruff format --check .`, which covers
+  `MILESTONES.md`'s fenced Python blocks. Aligned trailing comments
+  inside a spec's code block fail the gate; run `uv run ruff format .`
+  after appending specs (discovered when the gate failed despite
+  231 passed).
+- 2026-09-28 (M021): lock honored — M021 design was presented for
+  human approval FIRST (approved as written), roadmap flipped to
+  in-progress only after sign-off, then implemented. Next locked
+  milestone: M042 (LLM live provider); M039/M046/M058 also 🔒.

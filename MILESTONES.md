@@ -38,7 +38,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M019 | Farm State service (compute/query) | P0 | M018 | done |
 | M020 | Farm State API | P0 | M019, M010 | done |
 | **External providers — interfaces & demo (live = later)** | | | | |
-| M021 | Provider interface pattern (abstract base + registry) | P0 🔒 | M002 | not-started |
+| M021 | Provider interface pattern (abstract base + registry) | P0 🔒 | M002 | done |
 | M022 | Weather demo provider | P0 | M021 | not-started |
 | M023 | Weather ingestion service + storage table | P0 | M022, M019 | not-started |
 | M024 | Weather live provider (Open-Meteo) | P1 | M023 | not-started |
@@ -2855,3 +2855,218 @@ No ingestion/provider calls (M022+), no health/risk computation
   both validation shapes, signals round trip with naive-tz input,
   idempotent delete; cleanup deleted seeded rows. ALL PASS; server
   killed by PID (M009 lesson).
+
+### M021 — Provider interface pattern (abstract base + registry) 🔒
+
+**Priority:** P0 **Depends On:** M002
+**Status:** done (lock approved by human 2026-09-28, design as
+written)
+
+#### Objective
+One consistent, testable pattern for every external-data consumer:
+`src/providers/` ships a **base class + errors + registry +
+settings-driven mode selection** (`demo`/`live` flags already in
+`Settings` since M002), plus **one reference family interface**
+(Weather) that proves the pattern end-to-end. M022+ milestones then
+only write concrete implementations.
+
+#### Why This Milestone Exists
+Six later milestones (M022, M025, M028, M036, M040 + their live
+twins) would otherwise each invent their own lookup/selection/error
+style. Locking the pattern once — while nothing implements it yet —
+is the cheapest moment. 🔒 because this *is* the architecture review.
+
+#### Files Expected to Be Created
+- `src/providers/__init__.py` (public exports)
+- `src/providers/base.py`
+- `src/providers/errors.py`
+- `src/providers/registry.py`
+- `src/providers/weather.py` (reference family ABC + payload model)
+- `tests/providers/__init__.py`
+- `tests/providers/test_providers.py`
+
+#### Files Expected to Be Modified
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None. Pure in-process pattern.
+
+#### External Dependencies
+None new (pydantic, asyncio only).
+
+#### Architecture (the design under review)
+
+**1. Package `src/providers/`** (peer of `src/ingestion`/`src/services`;
+weather/sat/soil feed ingestion, disease/LLM feed `src/ai` — a shared
+home avoids duplication).
+
+**2. `errors.py`**
+```python
+class ProviderError(Exception): ...            # base, safe message
+class ProviderNotRegistered(ProviderError)     # family/mode unknown
+class ProviderUnavailable(ProviderError)       # upstream down/timeout — retryable
+class ProviderResponseInvalid(ProviderError)   # payload violates contract — not retryable
+```
+Retries/backoff are the **ingestion layer's** job (M023+), never the
+provider's.
+
+**3. `base.py`**
+```python
+class BaseProvider(ABC):
+    family: ClassVar[str]  # "weather" | "satellite" | ...
+    mode: ClassVar[ProviderMode]  # "demo" | "live"
+    name: ClassVar[str]  # e.g. "open-meteo"
+
+    async def aclose(self) -> None:  # no-op; live providers override
+        ...
+```
+Metadata validated by the registry at registration (non-empty,
+family in known set, etc.).
+
+**4. `registry.py`**
+```python
+class ProviderRegistry:                       # instantiable → tests get fresh ones
+    def register(cls) -> cls                  # decorator; duplicate (family, mode) → ProviderError
+    def get(family, mode) -> BaseProvider     # lazy construct + cache one instance per key
+    async def aclose_all() -> None            # shutdown hook for workers
+default_registry = ProviderRegistry()
+def register(cls) -> cls                      # decorator on default_registry
+def get_provider(family, *, mode=None) -> BaseProvider
+    # mode defaults to get_settings().<family>_provider ("demo"/"live")
+```
+Known families are exactly the five settings flags:
+`weather, satellite, soil, disease, llm` (family → `f"{family}_provider"`).
+
+**5. `weather.py` — the reference family**
+```python
+class WeatherReading(BaseModel):      # typed contract, validated at the edge
+    fetched_at: datetime
+    temperature_c: float | None
+    humidity_pct: float | None
+    rainfall_mm_24h: float | None
+    wind_speed_kmh: float | None
+    condition: str | None
+    source: str                       # provider name
+
+class WeatherProvider(BaseProvider):
+    family = "weather"
+    @abstractmethod
+    async def fetch(self, lat: float, lon: float) -> WeatherReading: ...
+
+def get_weather_provider(*, mode=None) -> WeatherProvider
+    # typed wrapper over get_provider: no casts in call sites
+```
+M022 implements `WeatherProvider` twice? No — M022 registers the
+**demo** implementation under `("weather", "demo")`; M024 registers
+`("weather", "live")`. Ingestion M023 calls
+`get_weather_provider().fetch(lat, lon)` and folds the reading into
+`put_signals`. Families without a `lat/lon` need (disease: image,
+LLM: prompt) define their own ABC + typed getter in their milestone,
+same shape.
+
+**What deliberately stays out:** concrete providers, HTTP clients,
+caching/TTLs, retry policy, DB writes, `signals` document mapping
+(all M022+ concerns). No plugin auto-discovery/import magic —
+explicit registration only (grep-able, mypy-friendly).
+
+#### Implementation Steps
+1. Approval of this design (lock), roadmap → in-progress.
+2. `errors.py` → `base.py` → `registry.py` → `weather.py` → exports.
+3. Tests (pure unit, no DB/network): register/get, duplicate
+   registration rejected, unknown family/mode → ProviderNotRegistered,
+   settings-driven default mode (monkeypatched settings), incomplete
+   ABC subclass → TypeError, fake weather provider round trip through
+   the typed getter, `aclose_all` propagation, registry isolation
+   (fresh `ProviderRegistry` per test — never pollute the default one).
+4. Gate, docs, state, commits.
+
+#### Acceptance Criteria
+- [x] `get_provider("weather")` resolves to the settings-selected mode;
+      explicit `mode=` overrides.
+- [x] Duplicate `(family, mode)` registration fails fast with a clear
+      `ProviderError`.
+- [x] Unknown family → `ProviderNotRegistered` naming the family and
+      the five known ones.
+- [x] `WeatherProvider` cannot be instantiated with `fetch` missing;
+      a compliant fake passes through `get_weather_provider()` typed.
+- [x] Full quality gate green (pure unit tests, fast).
+
+#### Unit Tests Required
+All of the above; zero DB/network (fast suite).
+
+#### Integration Tests Required
+None (nothing real to integrate until M022).
+
+#### Security Checks Required
+- [x] No secrets/tokens in provider metadata or `repr`; registry does
+      not log settings values.
+
+#### Performance Checks Required
+- [x] Instances cached per `(family, mode)` — `get_provider` does not
+      re-instantiate per call; registration happens at import/startup
+      only.
+
+#### Memory/Resource Checks Required
+- [x] `aclose_all` releases per-instance resources (tested with a
+      fake that records calls).
+
+#### Failure Scenarios to Handle
+- Register before settings loaded → fine (mode is read at *get* time,
+  not registration time).
+- `get_settings()` flags disagree with registered modes (e.g.
+  `weather_provider="live"` but only demo registered) →
+  `ProviderNotRegistered` listing what *is* registered for the family.
+- Misbehaving provider raising `ProviderError` subclasses → pass
+  through untouched (ingestion maps them later).
+
+#### Rollback Strategy
+Delete `src/providers/` + tests; nothing imports it until M022.
+
+#### Verification Commands
+```bash
+uv run pytest tests/providers -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No concrete providers (M022/M025/M028/M036/M040), no HTTP/network
+calls, no retries, no DB, no caching TTLs, no auto-discovery.
+
+#### Verification & Notes (added on completion)
+- Delivered as spec'd: `src/providers/` — `errors.py` (4-class
+  hierarchy), `base.py` (`BaseProvider` metadata ClassVars +
+  `KNOWN_FAMILIES` + no-op `aclose`), `registry.py`
+  (`ProviderRegistry` instantiable / `default_registry` /
+  `register` / settings-driven `get_provider`), `weather.py`
+  (reference `WeatherProvider` ABC + `WeatherReading` + typed
+  `get_weather_provider`), `__init__.py` public exports.
+- Design approved by human (lock) before any code — roadmap flipped
+  to in-progress only after approval.
+- Tests: 15 pure unit tests (`tests/providers/test_providers.py`),
+  0.73s, zero DB/network: instance caching, duplicate registration,
+  metadata validation (family/mode/name), unknown-family messaging
+  (lists known families + what's registered per family), settings
+  default vs explicit mode (monkeypatched `default_registry` +
+  `get_settings` — never pollutes the process registry, house rule),
+  incomplete-ABC → TypeError, typed round trip, wrong-implementation
+  rejection, `aclose_all` close + re-construct, error hierarchy, repr.
+- Fixes during lint/mypy: `aclose` body `return None` (ruff B027),
+  `pytest.raises(ValidationError)` instead of blind `Exception`
+  (B017), `ClassVar[Any]` annotations on intentionally-bad test
+  classes (mypy misc), `model_validate` for missing-required-field
+  checks (mypy call-arg), message assertion matched the actual
+  `mode='live'` header rather than an invented `weather/live` slug.
+- **Tooling note (found by the gate): ruff 0.16.9 formats Markdown
+  code blocks** — `scripts/check.ps1` runs `ruff format --check .`
+  over `MILESTONES.md` too; aligned trailing comments in the spec's
+  fenced blocks failed the gate until `uv run ruff format .`.
+- Gate: `scripts/check.ps1` PASSED — ruff format/check, mypy, **231
+  passed** (216 baseline + 15 new); bandit `-r -ll` on
+  `src/providers` + `tests/providers` = 0; pip-audit clean.
+- Live (`live_m021.py`, in-process): settings flags ×5, register →
+  settings-driven `get_provider` → typed getter → validated reading,
+  instance caching, `ProviderNotRegistered` shape, `aclose_all`
+  re-construct, registry isolation, unload — 10/10 ALL PASS.
