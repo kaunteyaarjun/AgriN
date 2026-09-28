@@ -34,7 +34,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M016 | Plot CRUD API + ownership authorization | P0 | M015, M010 | done |
 | M017 | Cross-resource authorization audit (IDOR pass) | P0 | M012, M014, M016 | done |
 | **Farm Digital Twin** | | | | |
-| M018 | Farm State schema (crop, stage, planting date, signal cache) | P0 | M015 | not-started |
+| M018 | Farm State schema (crop, stage, planting date, signal cache) | P0 | M015 | done |
 | M019 | Farm State service (compute/query) | P0 | M018 | not-started |
 | M020 | Farm State API | P0 | M019, M010 | not-started |
 | **External providers — interfaces & demo (live = later)** | | | | |
@@ -2340,3 +2340,187 @@ frontend, no refactors beyond defect fixes the audit forces.
   path missing the `/plots` segment, and asserting 403 on `GET /farms`
   (farmers legitimately list their own farms — the staff-only list is
   `GET /farmers`). Fixed and re-run to green.
+
+---
+
+### M018 — Farm State schema (crop, stage, planting date, signal cache)
+
+**Priority:** P0 **Depends On:** M015
+**Status:** done
+
+#### Objective
+Two tables (hand-written migration `0006`) that make the Farm Digital
+Twin persistable: **`plot_states`** (what is growing where: crop,
+growth stage, planting date — 1:1 with a plot) and
+**`farm_signal_caches`** (latest external conditions per farm: a JSONB
+`signals` document + `refreshed_at`).
+
+#### Why This Milestone Exists
+Everything from M019 onward (state service, health/risk/recommendation
+engines, disease context, decision engine, dashboards) reads the crop
+facts from here instead of recomputing them, and the ingestion services
+(M023/M026/M029) need a designated place to publish their latest values.
+
+#### Grain decision (documented data-model call, not flagged 🔒 in §6)
+- **Crop/stage/planting date are per-plot**, not per-farm: a farm's
+  plots routinely carry different crops, and M018's dependency on M015
+  (Plot) — not M013 (Farm) — is the roadmap telling us the same thing.
+  "Farm State" = the twin aggregate served from `plot_states` +
+  `farm_signal_caches` together (M019 computes/queries it).
+- **Signals are per-farm**: weather/NDVI/soil are fetched for the
+  farm's location once, then shared by all its plots — one cache row
+  per farm avoids redundant provider calls (perf checklist).
+
+#### Files Expected to Be Created
+- `src/models/plot_state.py`
+- `src/models/farm_signal_cache.py`
+- `alembic/versions/0006_farm_state.py` (hand-written)
+- `tests/models/test_state.py`
+
+#### Files Expected to Be Modified
+- `src/models/__init__.py` (register/export models)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+`alembic` revision **0006** (down_revision `0005`), two tables:
+
+```
+plot_states
+  plot_id     uuid PK → plots.id ON DELETE CASCADE   (enforces 1:1)
+  crop        varchar(80)  NOT NULL
+  growth_stage varchar(40) NOT NULL
+              CHECK (growth_stage IN ('germination','vegetative',
+                     'flowering','fruiting','maturation','harvest'))
+  planted_on  date NOT NULL
+  created_at / updated_at  timestamptz NOT NULL, server_default now()
+
+farm_signal_caches
+  farm_id     uuid PK → farms.id ON DELETE CASCADE
+  signals     jsonb NOT NULL DEFAULT '{}'   -- {"weather": {...},
+                                             --  "satellite": {...},
+                                             --  "soil": {...}}
+  refreshed_at timestamptz NOT NULL, server_default now()  -- source fetch time
+  created_at / updated_at  timestamptz NOT NULL, server_default now()
+```
+
+- Cascade chain verified: delete farm → plots → plot_states; delete farm
+  → farm_signal_caches.
+- No GIN index on `signals`: the only access pattern is PK point lookup
+  and whole-document read/write (documented as "not needed yet", re-check
+  in M056 if a `@>` containment query ever appears).
+- No `planted_on <= today` DB check: future planting dates are a
+  legitimate plan (app-level validation belongs to M020's API).
+
+#### API Changes
+None (M020). The `GROWTH_STAGES` canonical tuple lives in
+`src/models/plot_state.py` so M020/M054 share one source of truth.
+
+#### Frontend Changes
+None (M047/M048).
+
+#### External Dependencies
+None new.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. Models + `__init__.py` exports.
+3. Hand-written migration `0006` (standing rule: never trust
+   autogenerate — but still diff it against autogenerate output as a
+   cross-check).
+4. `tests/models/test_state.py`: metadata assertions (no DB) +
+   integration (DB): insert, 1:1 violation, JSONB round trip, cascades,
+   stage CHECK enforcement, orphan FK rejection.
+5. Gate (includes the global upgrade→downgrade→upgrade migration
+   round-trip), live verify, docs, state, commit.
+
+#### Acceptance Criteria
+- [x] `alembic upgrade head` / `downgrade base` round-trip clean;
+      `0006` hand-reviewed against autogenerate output (`alembic check`:
+      "No new upgrade operations detected" after the `spatial_ref_sys`
+      filter).
+- [x] Duplicate `plot_states.plot_id` rejected by the DB (PK).
+- [x] Unknown growth stage rejected by the DB (CHECK); unknown plot/farm
+      id rejected by FK.
+- [x] Deleting a farm removes its plots' states and its signal cache;
+      deleting a plot alone removes only that plot's state.
+- [x] JSONB `signals` round-trips exactly (nested keys, numbers, nulls).
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+- Table/column/constraint metadata assertions for both tables (no DB).
+- `GROWTH_STAGES` contains the six CHECK values (test stays honest if
+  either side changes).
+
+#### Integration Tests Required
+- Insert/read, 1:1 duplicate → IntegrityError, stage CHECK violation →
+  IntegrityError, orphan FK → IntegrityError, farm/plot cascade
+  behavior, JSONB round trip — all against dev Postgres.
+
+#### Security Checks Required
+- [ ] No secrets/PII in schema; `signals` content is provider data only
+      (raw farmer records stay in their own tables).
+- [ ] FK+cascade so no orphaned state rows can be served later without
+      their parent (M020 must still authorize via the farm chain —
+      noted as an M020 requirement).
+
+#### Performance Checks Required
+- [ ] Both tables are PK-addressed point lookups; no unbounded growth
+      per request; no new query patterns in this milestone.
+
+#### Memory/Resource Checks Required
+None significant (schema only).
+
+#### Failure Scenarios to Handle
+- Migration applied twice → idempotent (Alembic; global round-trip test
+  proves it).
+- Autogenerate drops/misses the CHECK → hand-review + explicit test.
+- Deleting a farm with states + caches in one transaction → no FK
+  violation (cascade order proven by integration test).
+
+#### Rollback Strategy
+`alembic downgrade 0005` drops both tables; models revert with the
+files.
+
+#### Verification Commands
+```bash
+uv run pytest tests/models/test_state.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+# live: alembic upgrade head / downgrade base / upgrade head + \d plot_states
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No state computation/query service (M019), no API (M020), no provider
+ingestion writing into `signals` yet (M023+), no frontend, no GIN
+indexes or partitioning.
+
+#### Verification & Notes (added on completion)
+- **Deviation (logged):** `alembic/env.py` modified — added an
+  `include_object` filter excluding PostGIS's `spatial_ref_sys` from
+  autogenerate diffs. Without it, `alembic check` (this milestone's
+  cross-check step) always fails with a bogus `remove_table`, which
+  would mask real drift in every future hand-reviewed migration.
+- **Deviation (logged):** `tests/test_migrations.py` — the three
+  hardcoded `== "0005"` head assertions broke on revision 0006 (they
+  broke the same way at 0006's predecessors by design of the literal).
+  Replaced with `_head_revision()` derived from Alembic's script
+  directory so future milestones don't re-break this gate.
+- Gate PASSED: ruff format OK, ruff check OK, mypy OK, pytest
+  **192 passed / 0 skipped** (+14 state tests); bandit medium/high on
+  all touched files = 0; `pip-audit` = no known vulnerabilities.
+- **Live verification:** `alembic downgrade 0005` → both tables gone
+  (`to_regclass` NULL), `upgrade head` → both present; `\d plot_states`
+  shows PK `plot_id`, FK `plots.id ON DELETE CASCADE`, and the stage
+  CHECK with exactly the six `GROWTH_STAGES` values (model, migration
+  and constant provably aligned via
+  `test_growth_stage_check_matches_growth_stages_constant`).
+- Findings fixed during the milestone (both in test expectations, one
+  revealing a real schema issue):
+  1. Model did not declare the stage CHECK (only the migration did) —
+     added `CheckConstraint` built from `GROWTH_STAGES` to
+     `PlotState.__table_args__` so metadata, migration and constant
+     cannot drift; `alembic check` now guards it.
+  2. SQLAlchemy wraps zero-arg column defaults as `lambda ctx: fn()`
+     — asserted via `wrapped(None) == {}` instead of identity.

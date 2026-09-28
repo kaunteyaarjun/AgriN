@@ -63,20 +63,28 @@ def _current_revision() -> str | None:
     return asyncio.run(_read())
 
 
+def _head_revision() -> str | None:
+    """Current head from the script directory — derived, never hardcoded
+    (M018: every new revision used to break this test's literal)."""
+    from alembic.script import ScriptDirectory
+
+    return ScriptDirectory.from_config(_config()).get_current_head()
+
+
 def test_upgrade_downgrade_upgrade_round_trip() -> None:
     cfg = _config()
     command.upgrade(cfg, "head")
-    assert _current_revision() == "0005"
+    assert _current_revision() == _head_revision()
 
     command.downgrade(cfg, "base")
     assert _current_revision() is None
 
     command.upgrade(cfg, "head")
-    assert _current_revision() == "0005"
+    assert _current_revision() == _head_revision()
 
 
 def test_upgrade_head_is_idempotent() -> None:
     cfg = _config()
     command.upgrade(cfg, "head")
     command.upgrade(cfg, "head")
-    assert _current_revision() == "0005"
+    assert _current_revision() == _head_revision()

@@ -8,11 +8,13 @@ never hardcoded in ``alembic.ini``. ``target_metadata`` is the shared
 from __future__ import annotations
 
 import asyncio
+from typing import Literal
 
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.sql.schema import SchemaItem
 from src.core.config import get_settings
 
 # Importing the package (not base directly) registers every model on
@@ -31,6 +33,28 @@ config = context.config
 target_metadata = Base.metadata
 
 
+def _include_object(
+    obj: SchemaItem,
+    name: str | None,
+    type_: Literal[
+        "schema",
+        "table",
+        "column",
+        "index",
+        "unique_constraint",
+        "foreign_key_constraint",
+        "check_constraint",
+    ],
+    reflected: bool,
+    compare_to: SchemaItem | None,
+) -> bool:
+    """Autogenerate filter (M018 finding): ``spatial_ref_sys`` belongs to the
+    PostGIS extension, not to AgriN's models. Without this, ``alembic check``
+    and every generated diff report a bogus ``remove_table`` — noise that
+    would mask real drift during hand-review (standing rule)."""
+    return not (type_ == "table" and name == "spatial_ref_sys")
+
+
 def _database_url() -> str:
     settings = get_settings()
     if not settings.database_url:
@@ -47,6 +71,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=_include_object,
     )
 
     with context.begin_transaction():
@@ -54,7 +79,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=_include_object,
+    )
 
     with context.begin_transaction():
         context.run_migrations()

@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M018 — Farm State schema (crop, stage, planting date, signal cache)"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017"]
-Current implementation status: "M017 done: cross-resource authorization audit (IDOR pass) — tests/api/test_idor.py (13 tests) covering the whole /api/v1 surface: route-inventory default-deny driven from the real app's OpenAPI schema (15 non-public ops -> 401 anon; allow-list exact), cross-tenant profile/farm/plot 404 with byte-identical body vs missing id (no oracle), mass-assignment probes (user_id/role/password_hash/farmer_id/farm_id immutable, DB-verified), list scoping + no-profile farmer, malformed UUID -> 422 (anon -> 401), sanitized error bodies, officer 404/403 ordering. No defects found in src/ — zero production-code changes."
+Current milestone: "M019 — Farm State service (compute/query)"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018"]
+Current implementation status: "M018 done: Farm State schema — rev 0006 adds plot_states (plot_id PK+FK CASCADE = 1:1, crop/stage/planted_on NOT NULL, stage DB CHECK built from shared GROWTH_STAGES tuple) and farm_signal_caches (farm_id PK+FK CASCADE, signals jsonb NOT NULL DEFAULT '{}' GIN-less by design, refreshed_at). Grain decision: crop facts per plot (M015 dep), signal cache per farm (shared location). alembic check clean via new spatial_ref_sys include_object filter; migration-test head assertion now derived not hardcoded."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -17,9 +17,9 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding)."
 Blocked tasks: []
-Next milestone: "M018 — Farm State schema (crop, stage, planting date, signal cache)"
-Last verification: "M017 gate PASSED with live dev DB (65432, PostGIS 3.4): ruff format OK, ruff check OK, mypy OK, pytest 178 passed / 0 skipped (13 new IDOR); bandit on tests/api/test_idor.py 0 medium/high; pip-audit clean. Live uvicorn 8/8 (anon inventory 15/15 -> 401, allow-list exact, cross-tenant 404 oracle-free, mass-assign ignored in DB, malformed uuid 422) + live artifact cleanup before final gate."
-Last test result: "pytest = 178 passed (idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+Next milestone: "M019 — Farm State service (compute/query)"
+Last verification: "M018 gate PASSED with live dev DB (65432, PostGIS 3.4): ruff format OK, ruff check OK, mypy OK, pytest 192 passed / 0 skipped (14 new state tests); bandit medium/high on touched files = 0; pip-audit clean; alembic check = no new upgrade ops. Live: downgrade 0005 (tables gone) -> upgrade head (tables back) + \\d plot_states shows PK/FK CASCADE/stage CHECK with exactly the six GROWTH_STAGES values."
+Last test result: "pytest = 192 passed (state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
