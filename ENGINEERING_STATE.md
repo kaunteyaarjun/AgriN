@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M020 — Farm State API"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019"]
-Current implementation status: "M019 done: Farm State service (src/services/farm_state.py) — get_farm_state assembles plots+crop state+days-since-planting+signal age in exactly 3 queries (NotFound on unknown farm, no authz by design: callers authorize first via M014's _authorized_farm); set_plot_state / put_signals are single-statement ON CONFLICT upserts (ValidationFailed on bad stage/empty crop, NotFound on unknown plot/farm); clear_plot_state idempotent. Pydantic DTOs (FarmStateView/PlotStateView/SignalCacheView) defined here for M020 to reuse. Derived fields policy-free: negative days/age exposed as-is; staleness thresholds deferred to M032+."
+Current milestone: "M021 — Provider interface pattern (abstract base + registry) [LOCKED — awaiting human confirmation]"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020"]
+Current implementation status: "M020 done: Farm State API — src/api/v1/farm_state.py, tag farm-state, 4 routes (GET /farms/{id}/state -> 200 FarmStateView; PUT/DELETE /farms/{id}/plots/{id}/state -> 204; PUT /farms/{id}/signals -> 204). Every route runs M014's _authorized_farm/_authorized_plot BEFORE the M019 service (matrix: admin/owner write, officer read-only 403, non-owner 404 no-oracle, anon 401). Validation: growth_stage via field_validator against GROWTH_STAGES (Literal unpacking not mypy-safe), crop 1-80 = DB String(80), signals JSON cap 50k chars, naive refreshed_at gets UTC attached (timestamptz). No date policy (future planted_on allowed, M019 decision). Both 422 shapes documented (pydantic detail vs AppError error_code)."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -15,11 +15,11 @@ Known resource/memory issues:
   - "Residual (documented, not reproducible locally): asyncio.wait_for cancelling /ready's check mid real-socket cleanup; SQLAlchemy pool handles greenlet cancellation — re-measure in M056. Refused-connection path asserted clean (checkedout()==0)."
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
-  - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding)."
+  - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks: []
-Next milestone: "M020 — Farm State API"
-Last verification: "M019 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 202 passed / 0 skipped (10 new farm-state service tests); bandit -r -ll on src/services + tests/services = 0; pip-audit clean. Live (live_m019.py): insert+upsert -> 1 row second-values-wins, wholesale signal replace, full view (days=8, age=0), both NotFound paths, bad-stage ValidationFailed, clear twice -> 0 rows, seeded cleanup deleted."
-Last test result: "pytest = 202 passed (farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+Next milestone: "M021 — Provider interface pattern (abstract base + registry) [LOCKED 🔒 — Master Prompt: confirm architecture + interfaces before starting; do NOT auto-continue]"
+Last verification: "M020 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 216 passed / 0 skipped (14 new farm-state API tests); bandit -r -ll on src/api + src/services + touched tests = 0; pip-audit clean. Live: real uvicorn :8000 + live_m020.py — 20 checks ALL PASS (full authz matrix x4 routes, happy view days=2462, both 422 shapes, signals round trip with naive tz, idempotent delete); server killed by PID."
+Last test result: "pytest = 216 passed (farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)

@@ -36,7 +36,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **Farm Digital Twin** | | | | |
 | M018 | Farm State schema (crop, stage, planting date, signal cache) | P0 | M015 | done |
 | M019 | Farm State service (compute/query) | P0 | M018 | done |
-| M020 | Farm State API | P0 | M019, M010 | not-started |
+| M020 | Farm State API | P0 | M019, M010 | done |
 | **External providers — interfaces & demo (live = later)** | | | | |
 | M021 | Provider interface pattern (abstract base + registry) | P0 🔒 | M002 | not-started |
 | M022 | Weather demo provider | P0 | M021 | not-started |
@@ -2693,3 +2693,165 @@ staleness policy thresholds, no caching layer.
   = 8, age_seconds = 0), both NotFound paths, bad-stage
   `ValidationFailed`, clear twice → 0 rows; cleanup deleted seeded
   rows. ALL PASS.
+
+### M020 — Farm State API
+
+**Priority:** P0 **Depends On:** M019, M010
+**Status:** done
+
+#### Objective
+`src/api/v1/farm_state.py`: four endpoints wiring M019's service to
+HTTP with M014's authorization matrix — read the Farm Digital Twin
+view, set/clear a plot's crop state, push a farm's signal cache.
+
+#### Why This Milestone Exists
+M019's service has no HTTP surface; this milestone is what the demo
+frontend (M055+) and API consumers actually call to see and edit the
+twin. It also locks the authz story the M019 docstring deferred:
+every route authorizes with `_authorized_farm` / `_authorized_plot`
+*before* touching the service.
+
+#### Files Expected to Be Created
+- `src/api/v1/farm_state.py`
+- `tests/api/test_farm_state.py`
+
+#### Files Expected to Be Modified
+- `src/api/v1/__init__.py` (router registration)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None.
+
+#### API Changes
+All under `/api/v1`, tag `farm-state`:
+
+| Method | Path | Authz | Success |
+|---|---|---|---|
+| GET | `/farms/{farm_id}/state` | read matrix (officer OK) | 200 `FarmStateView` |
+| PUT | `/farms/{farm_id}/plots/{plot_id}/state` | write matrix (owner/admin; officer 403; non-owner 404) | 204 |
+| DELETE | `/farms/{farm_id}/plots/{plot_id}/state` | write matrix | 204 |
+| PUT | `/farms/{farm_id}/signals` | write matrix | 204 |
+
+- Response body of GET reuses the service DTO `FarmStateView` directly
+  (M019 contract).
+- Request `PUT plot state`: `{crop, growth_stage, planted_on}` —
+  `growth_stage` is a `Literal[*GROWTH_STAGES]` (pydantic → 422),
+  `crop` min 1 / **max 80** (matches the DB `String(80)`), whitespace-
+  only crop reaches the service → `ValidationFailed` 422 with the
+  AppError shape (belt and braces, documented in tests).
+- Request `PUT signals`: `{signals: object, refreshed_at?: ISO}` —
+  whole JSON document capped at 50 000 chars (422 on overflow);
+  naive `refreshed_at` gets UTC attached (column is `timestamptz`);
+  omitted → service uses `now()`.
+- No date policy: `planted_on` may be in the future (M019 decision —
+  derived `days_since_planted` is exposed as-is, possibly negative).
+- Authz is `for_write=True` for PUTs/DELETE, `for_write=False` for the
+  GET — identical semantics to M014/M016 (no oracle: cross-tenant →
+  404).
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new.
+
+#### Service Contract Used
+As M019: `get_farm_state` (3 queries), `set_plot_state`,
+`clear_plot_state`, `put_signals`. The API adds exactly one authz
+SELECT before each call (documented; the 3-query contract belongs to
+the service layer).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. Router module: request models, four routes, service delegation.
+3. Register in `src/api/v1/__init__.py`.
+4. `tests/api/test_farm_state.py` (fixture pattern copied from
+   `test_farms.py`): full matrix ×4 routes, cross-farm/unknown ids,
+   stage/crop/signals validation, idempotent PUTs, anon 401.
+5. Gate, live verify, docs, state, commits.
+
+#### Acceptance Criteria
+- [x] GET returns the full twin view (plots, states, counts, signals)
+      for owner farmer and officer; non-owner farmer → 404; anon → 401.
+- [x] PUT plot state twice → 204/204 and GET shows the second values;
+      bad stage → 422; officer → 403; cross-farm plot → 404.
+- [x] DELETE plot state twice → 204/204; state gone from GET.
+- [x] PUT signals → 204 and GET reflects the document + refreshed_at;
+      oversized document → 422; officer → 403.
+- [x] Route-inventory default-deny (M017 test) still green — new
+      routes demand auth.
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+- [x] Request-model validation: stage Literal, crop length, signals size
+      cap, naive `refreshed_at` UTC attachment (pure pydantic, no DB).
+
+#### Integration Tests Required
+- [x] All matrix paths above against dev Postgres, scoped cleanup (house
+  rule).
+
+#### Security Checks Required
+- [x] Every route calls `_authorized_farm`/`_authorized_plot` before
+      the service (grep-level obvious + behavior tests).
+- [x] No service call bypasses authz (officer write → 403, non-owner →
+      404 asserted for all four routes).
+- [x] Anon → 401 on all four routes; M017 inventory test still green.
+
+#### Performance Checks Required
+- [x] GET remains 3 service queries + 1 authz SELECT (no N+1 — one
+      LEFT JOIN, asserted by inspection/test where practical).
+
+#### Memory/Resource Checks Required
+- [x] Signals document capped at 50 000 chars at the API edge.
+
+#### Failure Scenarios to Handle
+- Unknown farm/plot → 404; cross-farm plot id in URL → 404 (plot
+  scoped to URL farm by `_authorized_plot`).
+- Farm/plot deleted between authz and service call → service
+  `NotFound` → 404 (documented race).
+- Whitespace-only crop → 422 (`ValidationFailed` AppError shape);
+  bad stage → 422 (pydantic shape) — both 422, differing bodies is a
+  known inconsistency (see ENGINEERING_STATE debt note).
+
+#### Rollback Strategy
+Remove the router module + registration; nothing else depends on it
+until M055's frontend.
+
+#### Verification Commands
+```bash
+uv run pytest tests/api/test_farm_state.py tests/api/test_idor.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No ingestion/provider calls (M022+), no health/risk computation
+(M032+), no staleness policy, no caching layer, no new tables.
+
+#### Verification & Notes (added on completion)
+- Delivered as spec'd: `src/api/v1/farm_state.py` (tag `farm-state`),
+  registered in `src/api/v1/__init__.py`. Growth stage validated by a
+  `field_validator` against `GROWTH_STAGES` (not `Literal[...]` —
+  mypy can't unpack a `tuple[str, ...]` into Literal and a hard-coded
+  Literal would risk schema/DB drift).
+- Tests: 14 new (`tests/api/test_farm_state.py`) — two pure request-
+  model tests (stage/crop/date validation; size cap, tz attach) +
+  twelve HTTP tests covering the full matrix per route (anon 401 /
+  officer 403 on writes / non-owner 404 / admin allowed), idempotent
+  PUT/DELETE, both 422 shapes (pydantic `detail` vs AppError
+  `error_code`), cross-farm plot → 404, unknown ids, wholesale signal
+  replace, naive `refreshed_at` → UTC round trip. M017's OpenAPI
+  inventory test passed unchanged (default-deny now covers 19 ops).
+- Fix found while testing: `age_seconds` right after a PUT is 0
+  (sub-second truncation) — assertion adjusted to `>= 0`; pydantic
+  serializes UTC as `...Z`, assertions compare parsed datetimes.
+- Gate: `scripts/check.ps1` PASSED — ruff format/check, mypy, **216
+  passed** (202 baseline + 14 new); bandit `-r -ll` on `src/api` +
+  `src/services` + touched tests = 0; pip-audit clean.
+- Live (`uvicorn` on 8000 + `live_m020.py`, 20 checks): full authz
+  matrix ×4 routes, happy-path view (days_since_planted = 2462),
+  both validation shapes, signals round trip with naive-tz input,
+  idempotent delete; cleanup deleted seeded rows. ALL PASS; server
+  killed by PID (M009 lesson).
