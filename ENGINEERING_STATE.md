@@ -61,6 +61,7 @@ Last test result: "pytest = 255 passed (weather-ingestion 10, weather-demo 14, p
 | M020 | `eef7aa6` |
 | M021 | `890755e` |
 | M022 | `90ea7ce` |
+| M023 | `31d3988` |
 
 ## Notes / findings
 
