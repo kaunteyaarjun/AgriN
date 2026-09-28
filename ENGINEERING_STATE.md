@@ -59,6 +59,7 @@ Last test result: "pytest = 231 passed (providers 15, farm-state-api 14, farm-st
 | M018 | `b0cc7c5` |
 | M019 | `293101c` |
 | M020 | `eef7aa6` |
+| M021 | `890755e` |
 
 ## Notes / findings
 
