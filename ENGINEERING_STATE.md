@@ -63,6 +63,7 @@ Last test result: "pytest = 280 passed (satellite-ingestion 11, satellite 14, we
 | M022 | `90ea7ce` |
 | M023 | `31d3988` |
 | M025 | `15d5f73` |
+| M026 | `33625fe` |
 
 ## Notes / findings
 
