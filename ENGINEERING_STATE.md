@@ -58,6 +58,7 @@ Last test result: "pytest = 216 passed (farm-state-api 14, farm-state-service 10
 | M017 | `34622b4` |
 | M018 | `b0cc7c5` |
 | M019 | `293101c` |
+| M020 | `eef7aa6` |
 
 ## Notes / findings
 
@@ -140,3 +141,8 @@ Last test result: "pytest = 216 passed (farm-state-api 14, farm-state-service 10
   tracking; also hardened `tests/models/test_plot.py` to scope its
   `Block A` reads by `farm_id`. The gate's migration round-trip wiped
   the residue automatically.
+- 2026-09-28 (M020): session stopped before M021 (Provider interface
+  pattern, 🔒) per the Master Engineering Prompt — architecture and
+  interface decisions need human confirmation before work starts.
+  Resume by confirming this state file, then spec M021 in
+  `MILESTONES.md` (roadmap → in-progress) and run the loop.
