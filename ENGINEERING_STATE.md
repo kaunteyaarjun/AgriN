@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M023 — Weather ingestion service + storage table"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022"]
-Current implementation status: "M022 done: DemoWeatherProvider (src/providers/weather_demo.py) — deterministic sha256-seeded synthetic weather per coordinate (4-decimal precision), documented ranges temp 18.0-32.9C / humidity 40-90 / rain 0.0-11.9mm / wind 1-45kmh / 5-value condition vocabulary, WGS84 guard raises ValueError (caller bug, not ProviderError), fetched_at=now UTC, source=demo-weather-v1. Registered via @register decorator + explicit import line in src/providers/__init__.py (M021's no-auto-discovery rule: one comment-marked line per concrete provider). get_weather_provider() under default settings now resolves end-to-end."
+Current milestone: "M025 — Satellite/NDVI demo provider"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023"]
+Current implementation status: "M023 done: weather ingestion vertical slice — rev 0007 creates append-only `weather_observations` (farm_id FK, observed_at, 5 weather fields, provider, raw_units JSONB, index (farm_id, observed_at) ASC — spec said DESC, backward-scan equivalent logged as deviation); WeatherObservation model + export; src/ingestion/weather.py (weather_signals_doc / ingest_weather_for_farm / ingest_weather_for_all + IngestResult/IngestSummary: fetch-before-write, NotFound unknown farm, skipped_no_geo without provider call, per-farm try/except+rollback isolation, signal-cache merge via put_signals preserving other keys); workers/weather_ingest.py (`python -m workers.weather_ingest [--farm UUID]`). Zero authz surface (no HTTP); worker logs farm id + status only."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -17,9 +17,9 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks: []
-Next milestone: "M023 — Weather ingestion service + storage table (P0, not locked; depends M022, M019)"
-Last verification: "M022 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 245 passed / 0 skipped (14 new demo-weather tests); bandit -r -ll on src/providers + tests/providers = 0; pip-audit clean. Live (live_m022.py in-process): 6/6 ALL PASS — settings demo flag, settings-path resolution, determinism, full Nairobi reading (24.0C/70%/9.5mm/43kmh/light_rain), distinct Mombasa point, out-of-range ValueError."
-Last test result: "pytest = 245 passed (weather-demo 14, providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+Next milestone: "M025 — Satellite/NDVI demo provider (P0, not locked; depends M021 already met). M024 (weather live, P1) also unlocked and pending; P0-first ordering → M025, then M026 satellite ingestion."
+Last verification: "M023 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 255 passed / 0 skipped (10 new ingestion tests); alembic check = 'No new upgrade operations detected' (model ≡ migration); bandit -r -ll on src/ingestion + workers + src/models + tests/ingestion = 0; pip-audit clean. Live (live_m023.py + real worker): ALL PASS — seeded geo/no-geo farms, `python -m workers.weather_ingest` ×2 (both: ingested=1 skipped_no_geo=1 provider_error=0 failed=0; verify after run 2 = 2 observation rows = append-only, cache weather doc complete with raw fields), `--farm` single mode ingested, cleanup left observations remaining=0."
+Last test result: "pytest = 255 passed (weather-ingestion 10, weather-demo 14, providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -153,3 +153,11 @@ Last test result: "pytest = 245 passed (weather-demo 14, providers 15, farm-stat
   human approval FIRST (approved as written), roadmap flipped to
   in-progress only after sign-off, then implemented. Next locked
   milestone: M042 (LLM live provider); M039/M046/M058 also 🔒.
+- 2026-09-28 (M023): **House rule: every DB-touching test must request
+  the `_db` fixture, even without seeded users.** A test that opens a
+  session without `_db` leaves a pooled connection bound to its
+  torn-down event loop; the *next* test's reachability probe then
+  fails with a misleading "dev Postgres not reachable" skip (reproduced
+  via `-k` pair bisection before the fix — `test_unknown_farm_…`
+  skipped its successor `test_ingest_for_all_…` but passed alone).
+  `_db`'s teardown (`dispose_engine`) is what clears the pool.

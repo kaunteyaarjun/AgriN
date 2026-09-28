@@ -40,7 +40,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **External providers — interfaces & demo (live = later)** | | | | |
 | M021 | Provider interface pattern (abstract base + registry) | P0 🔒 | M002 | done |
 | M022 | Weather demo provider | P0 | M021 | done |
-| M023 | Weather ingestion service + storage table | P0 | M022, M019 | not-started |
+| M023 | Weather ingestion service + storage table | P0 | M022, M019 | done |
 | M024 | Weather live provider (Open-Meteo) | P1 | M023 | not-started |
 | M025 | Satellite/NDVI demo provider | P0 | M021 | not-started |
 | M026 | Satellite ingestion service + storage table | P0 | M025, M019 | not-started |
@@ -3202,3 +3202,205 @@ ranges (demo is allowed to look synthetic).
   Mombasa differs (24.2 C, thunderstorm) → out-of-range ValueError —
   6/6 ALL PASS. (Script fix during live: `dataclasses.asdict` doesn't
   work on pydantic models — `model_dump()`.)
+
+### M023 — Weather ingestion service + storage table
+
+**Priority:** P0 **Depends On:** M022, M019
+**Status:** done
+
+#### Objective
+First full provider→storage pipeline: a `weather_observations` history
+table (rev 0007), a `WeatherObservation` model, and
+`src/ingestion/weather.py` that turns a `WeatherReading` into
+(a) an observation row and (b) the `weather` key of the farm's signal
+cache — merging with any other family keys already there. A thin
+worker (`workers/weather_ingest.py`) runs it over the dev farms.
+
+#### Why This Milestone Exists
+Proves the whole vertical: M021 pattern → M022 demo provider → M019
+cache write path, with per-provider merging happening exactly where
+M019 said it would (the ingestion layer). M031's normalization and
+the engines all consume what this milestone persists.
+
+#### Files Expected to Be Created
+- `alembic/versions/0007_weather_observations.py` (hand-written)
+- `src/models/weather_observation.py`
+- `src/ingestion/weather.py`
+- `workers/weather_ingest.py`
+- `tests/ingestion/__init__.py`
+- `tests/ingestion/test_weather_ingestion.py`
+
+#### Files Expected to Be Modified
+- `src/models/__init__.py`
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes (rev 0007, hand-written — never trust autogenerate)
+```sql
+CREATE TABLE weather_observations (
+    id              uuid PRIMARY KEY,            -- app-side uuid4 (M008 pattern)
+    farm_id         uuid NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+    provider        varchar(40) NOT NULL,        -- e.g. demo-weather-v1
+    observed_at     timestamptz NOT NULL,        -- reading.fetched_at
+    temperature_c   double precision NULL,
+    humidity_pct    double precision NULL,
+    rainfall_mm_24h double precision NULL,
+    wind_speed_kmh  double precision NULL,
+    condition       varchar(40) NULL,
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_weather_observations_farm_observed
+    ON weather_observations (farm_id, observed_at DESC);
+```
+History grain: **append-only** — every successful ingest adds a row
+(re-runs are not deduplicated; the cache always holds the latest).
+No `updated_at` (rows are immutable).
+
+#### API Changes / Frontend Changes
+None (worker entry point, no HTTP).
+
+#### External Dependencies
+None (uses M022 demo provider through `get_weather_provider()`).
+
+#### Service Contract
+```python
+# src/ingestion/weather.py
+def weather_signals_doc(reading: WeatherReading) -> dict
+    # {"weather": {temperature_c, humidity_pct, rainfall_mm_24h,
+    #   wind_speed_kmh, condition, observed_at (iso), source}}
+    # RAW provider units — M031 owns normalization.
+
+async def ingest_weather_for_farm(session, farm_id, *, provider=None) -> IngestResult
+    # 1) farm centroid (ST_Centroid) — NULL geo → status "skipped_no_geo"
+    # 2) provider.fetch(lat, lon) (default: get_weather_provider())
+    #    ProviderUnavailable/ProviderResponseInvalid → "provider_error"
+    #    (logged, counted, no partial writes — fetch happens BEFORE any insert)
+    # 3) insert observation row + commit
+    # 4) merge: read existing signals → signals["weather"] = doc → put_signals
+    #    (other family keys preserved; put_signals commits — M019 pattern)
+    # raises NotFound for unknown farm_id
+
+async def ingest_weather_for_all(session, *, provider=None) -> IngestSummary
+    # iterates every farm; per-farm failures isolated (rollback + count);
+    # returns IngestSummary(ingested, skipped_no_geo, provider_error, failed)
+
+# DTOs: IngestResult(farm_id, status, observation_id?, detail?)
+#       IngestSummary(... counts ..., results: list[IngestResult])
+# status ∈ {"ingested", "skipped_no_geo", "provider_error", "failed"}
+```
+Failure/atomicity note (documented): step 3 commits before step 4, so
+a crash between them leaves an observation row with a stale cache —
+the next run heals the cache; no data loss, only a briefly stale
+snapshot (acceptable at demo scale, logged if it ever happens).
+
+#### Worker
+```bash
+uv run python -m workers.weather_ingest              # all farms
+uv run python -m workers.weather_ingest --farm <uuid> # one farm
+```
+Prints one line per farm + summary; exit 0 even with per-farm errors
+(summary shows them), non-zero only on catastrophic failure (DB down).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. Hand-written rev 0007 + `WeatherObservation` model + export.
+3. `src/ingestion/weather.py` service + DTOs.
+4. `workers/weather_ingest.py` (arg parse, stats, print).
+5. Tests (dev Postgres, scoped cleanup).
+6. Gate, live, docs, state, commits.
+
+#### Acceptance Criteria
+- [x] Ingest on a geo farm → observation row + `signals.weather`
+      populated; pre-existing `signals.satellite` key survives merge.
+- [x] Farm with NULL geo → `skipped_no_geo`, no provider call, no row.
+- [x] Failing provider (fake) → `provider_error`, zero rows written.
+- [x] Second ingest → second observation row (append-only history).
+- [x] Unknown farm → `NotFound`.
+- [x] Worker end-to-end on dev DB (live check).
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+- [x] `weather_signals_doc` mapping (iso `observed_at`, all fields, raw
+  units).
+
+#### Integration Tests Required
+All acceptance paths above against dev Postgres; seeded rows cleaned
+by scoped user delete (FK cascade reaches farms → observations +
+signal caches).
+
+#### Security Checks Required
+- [x] No authz surface (no HTTP); worker is a trusted local process.
+- [x] No secrets in logs — status lines carry farm id + status only.
+
+#### Performance Checks Required
+- [x] Per farm: 1 provider call + ≤5 small queries (centroid, insert,
+      cache read, cache upsert); farms iterate sequentially (dozens at
+      demo scale — concurrency deliberately out of scope).
+
+#### Memory/Resource Checks Required
+- [x] One session for the whole worker run, closed at the end;
+      engine disposed on exit.
+
+#### Failure Scenarios to Handle
+- NULL farm geometry → skip (documented), not an error.
+- Provider raises `ProviderError` subclass → counted, next farm still
+  processed (per-farm try/except + rollback).
+- Cache read-modify-write race with a concurrent API write →
+  last-writer-wins on the whole doc (put_signals semantics; demo has
+  no concurrent writers — documented).
+
+#### Rollback Strategy
+`alembic downgrade 0006` drops the table; delete service/worker/
+tests; M019/M021/M022 untouched.
+
+#### Verification Commands
+```bash
+uv run pytest tests/ingestion tests/test_migrations.py -v
+uv run python -m workers.weather_ingest --farm <uuid>
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No live HTTP provider (M024), no unit/timeframe normalization
+(M031), no scheduler/cron, no ingestion API endpoints, no satellite
+/soil families (M025–M030), no per-observation dedup.
+
+#### Verification & Notes (added on completion)
+- Delivered as spec'd: rev 0007 `weather_observations` (hand-written),
+  `WeatherObservation` model + export, `src/ingestion/weather.py`
+  (`weather_signals_doc` / `ingest_weather_for_farm` /
+  `ingest_weather_for_all` + `IngestResult`/`IngestSummary`),
+  `workers/weather_ingest.py` (`--farm` optional). `alembic check` =
+  "No new upgrade operations detected" (model ≡ migration).
+- **Deviation (logged):** index created **ASC** `(farm_id,
+  observed_at)` instead of the spec's `DESC` — Postgres scans it
+  backward for `ORDER BY observed_at DESC`, and the ASC form keeps
+  model metadata byte-comparable for `alembic check` (string column
+  names in `__table_args__` can't carry a reliable `.desc()`).
+- **Fixture lesson (reproduced + fixed):** any DB-touching test must
+  request `_db` even when it doesn't need seeded users —
+  `test_unknown_farm_raises_not_found` initially omitted it, leaving
+  an undisposed pool connection bound to its torn-down event loop;
+  the *next* test's reachability probe then failed with a misleading
+  "dev Postgres not reachable" skip. Bisected via `-k` pairs before
+  the fix.
+- Tests: 10 new (`tests/ingestion/test_weather_ingestion.py`) —
+  signals-doc mapping, merge preserving `satellite` key +
+  `refreshed_at == reading.fetched_at`, default-settings provider path
+  (proves M022 wiring), append-only history (2 rows / 1 cache),
+  no-geo skip without provider call (provider would explode),
+  provider-failure = zero writes, `NotFound`, batch counts across 3
+  farms, batch isolation (`RuntimeError` → `failed` + rollback,
+  batch continues), worker `_run(farm)` exit code + printed status.
+- Gate: `scripts/check.ps1` PASSED — ruff format/check, mypy, **255
+  passed** (245 baseline + 10 new); bandit `-r -ll` on
+  `src/ingestion` + `workers` + `src/models` + `tests/ingestion` = 0;
+  pip-audit clean.
+- Live: seeded 2 farms (geo/no-geo) → `python -m workers.weather_ingest`
+  twice (both runs: `ingested=1 skipped_no_geo=1 provider_error=0
+  failed=0`; verify → **2 observation rows** = append-only, cache
+  weather doc with all raw fields + `observed_at` ISO) → `--farm`
+  single mode `ingested` → cleanup left `observations remaining=0`.
+  ALL PASS.
