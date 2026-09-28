@@ -57,6 +57,7 @@ Last test result: "pytest = 202 passed (farm-state-service 10, state 14, idor 13
 | M016 | `d10854d` |
 | M017 | `34622b4` |
 | M018 | `b0cc7c5` |
+| M019 | `293101c` |
 
 ## Notes / findings
 
