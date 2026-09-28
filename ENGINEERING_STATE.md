@@ -62,6 +62,7 @@ Last test result: "pytest = 269 passed (satellite 14, weather-ingestion 10, weat
 | M021 | `890755e` |
 | M022 | `90ea7ce` |
 | M023 | `31d3988` |
+| M025 | `15d5f73` |
 
 ## Notes / findings
 
