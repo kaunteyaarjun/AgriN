@@ -56,6 +56,7 @@ Last test result: "pytest = 192 passed (state 14, idor 13, plots-API 13, farms-A
 | M015 | `750fc19` |
 | M016 | `d10854d` |
 | M017 | `34622b4` |
+| M018 | `b0cc7c5` |
 
 ## Notes / findings
 
