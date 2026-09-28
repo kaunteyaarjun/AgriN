@@ -152,7 +152,11 @@ async def test_geometry_round_trip_via_wkt(_db: None) -> None:
         srid = await session.scalar(select(func.ST_SRID(Plot.geo)).where(Plot.farm_id == farm.id))
         assert srid == 4326
 
-        fetched = (await session.execute(select(Plot).where(Plot.name == "Block A"))).scalar_one()
+        fetched = (
+            await session.execute(
+                select(Plot).where(Plot.farm_id == farm.id, Plot.name == "Block A")
+            )
+        ).scalar_one()
         assert fetched.area_hectares == Decimal("5.25")
     finally:
         await _cleanup(session, seeded)
@@ -212,7 +216,9 @@ async def test_deleting_farm_cascades_to_plots(_db: None) -> None:
         await session.commit()
 
         remaining = (
-            await session.execute(select(Plot).where(Plot.name == "Block A"))
+            await session.execute(
+                select(Plot).where(Plot.farm_id == farm.id, Plot.name == "Block A")
+            )
         ).scalar_one_or_none()
         assert remaining is None
     finally:

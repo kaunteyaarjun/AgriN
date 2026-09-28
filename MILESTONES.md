@@ -35,7 +35,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M017 | Cross-resource authorization audit (IDOR pass) | P0 | M012, M014, M016 | done |
 | **Farm Digital Twin** | | | | |
 | M018 | Farm State schema (crop, stage, planting date, signal cache) | P0 | M015 | done |
-| M019 | Farm State service (compute/query) | P0 | M018 | not-started |
+| M019 | Farm State service (compute/query) | P0 | M018 | done |
 | M020 | Farm State API | P0 | M019, M010 | not-started |
 | **External providers — interfaces & demo (live = later)** | | | | |
 | M021 | Provider interface pattern (abstract base + registry) | P0 🔒 | M002 | not-started |
@@ -2524,3 +2524,172 @@ indexes or partitioning.
      cannot drift; `alembic check` now guards it.
   2. SQLAlchemy wraps zero-arg column defaults as `lambda ctx: fn()`
      — asserted via `wrapped(None) == {}` instead of identity.
+
+---
+
+### M019 — Farm State service (compute/query)
+
+**Priority:** P0 **Depends On:** M018
+**Status:** done
+
+#### Objective
+`src/services/farm_state.py`: async service functions that
+**(a)** assemble the Farm Digital Twin view of a farm (plots + crop
+state + days-since-planting + signal cache with age) in a constant
+number of queries, and **(b)** provide the write paths (`set_plot_state`
+upsert, `clear_plot_state`, `put_signals` upsert) that M020's API and
+M054's seed script will call.
+
+#### Why This Milestone Exists
+M018 stored the tables; this milestone makes them *usable* — the single
+read entry point M020 exposes and the single write path every later
+milestone (ingestion M023/M026/M029, seed M054, engines M032+ via reads)
+goes through, so query shape and derived fields stay consistent.
+
+#### Files Expected to Be Created
+- `src/services/farm_state.py`
+- `tests/services/__init__.py`
+- `tests/services/test_farm_state.py`
+
+#### Files Expected to Be Modified
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None (tables exist from M018).
+
+#### API Changes
+None (M020). Service DTOs (`FarmStateView`, `PlotStateView`,
+`SignalCacheView` — Pydantic) are defined here and **reused by M020**.
+
+#### Frontend Changes
+None.
+
+#### External Dependencies
+None new.
+
+#### Service Contract
+```python
+async def get_farm_state(session, farm_id, *, now=None) -> FarmStateView
+    # 3 queries: farm row, plots LEFT JOIN plot_states, signal cache.
+    # Raises NotFound if the farm doesn't exist.
+    # NO AUTHZ HERE — callers must authorize first (M020 uses M014's
+    # _authorized_farm); documented loudly in the module docstring.
+
+async def set_plot_state(session, plot_id, *, crop, growth_stage, planted_on)
+    # Validates growth_stage against GROWTH_STAGES (ValidationFailed),
+    # pre-checks plot existence (NotFound), then
+    # INSERT ... ON CONFLICT (plot_id) DO UPDATE — idempotent upsert.
+
+async def clear_plot_state(session, plot_id) -> None   # idempotent delete
+
+async def put_signals(session, farm_id, *, signals, refreshed_at=None)
+    # Pre-checks farm (NotFound), upserts the cache document wholesale
+    # (last-writer-wins per provider family is M023+/M031's concern).
+```
+
+Derived fields computed in `get_farm_state` (deterministic, no I/O):
+- `days_since_planted` = `(now.date() - planted_on).days`; negative =
+  future planting date, exposed as-is (documented, not clamped);
+  `None` for plots without state.
+- `signals.age_seconds` = seconds since `refreshed_at`; `None` when the
+  cache row doesn't exist (freshness *policy*/staleness thresholds are
+  deliberately NOT decided here — engines decide in M032+).
+- `crops` = sorted unique crop list across planted plots; summary
+  counts (`plot_count`, `planted_plot_count`).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. Service module with DTOs + the four functions (postgres
+   `insert().on_conflict_do_update` for both upserts).
+3. `tests/services/test_farm_state.py` against dev Postgres: read-view
+   assembly (incl. a plot without state), days/age math with injected
+   `now`, upsert idempotency (2 calls → 1 row, second wins), clear
+   idempotency, NotFound paths, bad-stage ValidationFailed, query-count
+   guard (3 queries for the read path — performance check).
+4. Gate, live verify, docs, state, commit.
+
+#### Acceptance Criteria
+- [x] `get_farm_state` returns the full view (plots, states, summary,
+      signals) in exactly 3 queries; unknown farm → `NotFound`.
+- [x] `set_plot_state` twice → single row with second values; bad stage
+      → `ValidationFailed` before any DB write; unknown plot →
+      `NotFound`.
+- [x] `put_signals` twice → single cache row, signals replaced wholesale;
+      unknown farm → `NotFound`.
+- [x] `clear_plot_state` on a plot with/without state → both succeed.
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+- DTO/derived-math tests with injected `now` (no I/O where practical);
+  `GROWTH_STAGES` validation rejects an unknown stage.
+
+#### Integration Tests Required
+- All of the above against dev Postgres with real rows (seed/cleanup
+  scoped to seeded users, house rule).
+
+#### Security Checks Required
+- [x] No authz claimed in the service — module docstring warning present
+      (M020 must call `_authorized_farm` first; enforced by M020 tests).
+- [x] No raw SQL string interpolation anywhere (ORM/`insert()` only).
+
+#### Performance Checks Required
+- [x] Read path = 3 queries regardless of plot count (asserted with a
+      counted-execution test or documented measurement).
+- [x] Upserts are single-statement (`ON CONFLICT`), no read-modify-write.
+
+#### Memory/Resource Checks Required
+None significant (bounded result sets: one farm's plots).
+
+#### Failure Scenarios to Handle
+- Concurrent upserts of the same plot state → `ON CONFLICT` makes the
+  last writer win; no IntegrityError escape.
+- Farm deleted between authz and read (M020 race) → `NotFound`.
+- `refreshed_at` provided by ingestion in the past/future → stored as
+  given; `age_seconds` may be negative (documented, not clamped).
+
+#### Rollback Strategy
+Delete the service file + tests; nothing else imports it until M020.
+
+#### Verification Commands
+```bash
+uv run pytest tests/services/test_farm_state.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No HTTP layer (M020), no authorization (M020 via M014 helper), no
+provider calls (M022+), no health/risk computation (M032/M033), no
+staleness policy thresholds, no caching layer.
+
+#### Verification & Notes (added on completion)
+- Service delivered as spec'd: 4 functions + 3 Pydantic DTOs;
+  `get_farm_state` runs exactly 3 queries (asserted via a
+  `before_cursor_execute` listener filtered to farm/plot/cache table
+  statements), both upserts are single-statement `ON CONFLICT`.
+- Tests: 10 new (`tests/services/test_farm_state.py`) covering view
+  assembly, empty-farm zeros, injected-`now` math incl. negative
+  days/age (documented-as-is), query-count guard, upsert idempotency,
+  validation/NotFound paths, idempotent clear, wholesale signal
+  replace, Decimal area round-trip.
+- **Incident:** the first (broken) test run crashed `_seed` after
+  inserting rows but before the caller tracked the user id → 9 leaked
+  seeds broke 4 unrelated tests in the next gate
+  (`MultipleResultsFound` / wrong privileged-list totals). Fixes: seed
+  now appends its user id to the caller's `seeded` list *inside*
+  `_seed`, immediately after commit (partial-seed failures stay
+  tracked); hardened two unscoped `select(Plot).where(Plot.name == ...)`
+  reads in `tests/models/test_plot.py` to also filter by `farm_id`.
+  DB was restored clean by the gate's migration round-trip.
+- Deviations: none beyond the two test-hardening edits above.
+- Gate: `scripts/check.ps1` PASSED — ruff format/check, mypy, **202
+  passed** (192 baseline + 10 new); bandit `-r -ll` on
+  `src/services` + `tests/services` = 0; pip-audit clean (only the
+  local `agrin` package skipped, not on PyPI).
+- Live (`live_m019.py` on dev DB 65432): insert+upsert → 1 row second
+  values win, wholesale signal replace, full view (days_since_planted
+  = 8, age_seconds = 0), both NotFound paths, bad-stage
+  `ValidationFailed`, clear twice → 0 rows; cleanup deleted seeded
+  rows. ALL PASS.

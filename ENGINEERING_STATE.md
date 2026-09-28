@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M019 — Farm State service (compute/query)"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018"]
-Current implementation status: "M018 done: Farm State schema — rev 0006 adds plot_states (plot_id PK+FK CASCADE = 1:1, crop/stage/planted_on NOT NULL, stage DB CHECK built from shared GROWTH_STAGES tuple) and farm_signal_caches (farm_id PK+FK CASCADE, signals jsonb NOT NULL DEFAULT '{}' GIN-less by design, refreshed_at). Grain decision: crop facts per plot (M015 dep), signal cache per farm (shared location). alembic check clean via new spatial_ref_sys include_object filter; migration-test head assertion now derived not hardcoded."
+Current milestone: "M020 — Farm State API"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019"]
+Current implementation status: "M019 done: Farm State service (src/services/farm_state.py) — get_farm_state assembles plots+crop state+days-since-planting+signal age in exactly 3 queries (NotFound on unknown farm, no authz by design: callers authorize first via M014's _authorized_farm); set_plot_state / put_signals are single-statement ON CONFLICT upserts (ValidationFailed on bad stage/empty crop, NotFound on unknown plot/farm); clear_plot_state idempotent. Pydantic DTOs (FarmStateView/PlotStateView/SignalCacheView) defined here for M020 to reuse. Derived fields policy-free: negative days/age exposed as-is; staleness thresholds deferred to M032+."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -17,9 +17,9 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding)."
 Blocked tasks: []
-Next milestone: "M019 — Farm State service (compute/query)"
-Last verification: "M018 gate PASSED with live dev DB (65432, PostGIS 3.4): ruff format OK, ruff check OK, mypy OK, pytest 192 passed / 0 skipped (14 new state tests); bandit medium/high on touched files = 0; pip-audit clean; alembic check = no new upgrade ops. Live: downgrade 0005 (tables gone) -> upgrade head (tables back) + \\d plot_states shows PK/FK CASCADE/stage CHECK with exactly the six GROWTH_STAGES values."
-Last test result: "pytest = 192 passed (state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+Next milestone: "M020 — Farm State API"
+Last verification: "M019 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 202 passed / 0 skipped (10 new farm-state service tests); bandit -r -ll on src/services + tests/services = 0; pip-audit clean. Live (live_m019.py): insert+upsert -> 1 row second-values-wins, wholesale signal replace, full view (days=8, age=0), both NotFound paths, bad-stage ValidationFailed, clear twice -> 0 rows, seeded cleanup deleted."
+Last test result: "pytest = 202 passed (farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -128,3 +128,14 @@ Last test result: "pytest = 192 passed (state 14, idor 13, plots-API 13, farms-A
   a real `uvicorn src.main:app --port 8000` child process — kill it by
   the PID from `netstat -ano | Select-String ":8000.*LISTENING"` (M009
   lesson) before re-running tests.
+- 2026-09-28 (M019): **Partial-seed failures must stay tracked.** A test
+  helper that inserts the user row before later steps can raise must
+  append the id to the cleanup list *inside the helper, right after its
+  commit* — the old pattern (caller appends after the helper returns)
+  leaked 9 seed sets when the helper crashed mid-way, breaking 4
+  unrelated tests in the next gate (`MultipleResultsFound` in
+  `test_plot`'s unscoped name lookup, wrong privileged-list `total`
+  counts). `_seed` in `tests/services/test_farm_state.py` now owns
+  tracking; also hardened `tests/models/test_plot.py` to scope its
+  `Block A` reads by `farm_id`. The gate's migration round-trip wiped
+  the residue automatically.
