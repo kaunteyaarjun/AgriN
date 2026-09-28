@@ -19,25 +19,36 @@ from src.providers.errors import (
     ProviderUnavailable,
 )
 from src.providers.registry import ProviderRegistry, default_registry, get_provider, register
-from src.providers.weather import WeatherProvider, WeatherReading, get_weather_provider
+from src.providers.satellite import (
+    SatelliteProvider,
+    SatelliteReading,
+    get_satellite_provider,
+)
 
-# Concrete providers — explicit registration list (M021 rule: no
-# auto-discovery/entry-point magic; adding a provider = one line here).
+# Concrete providers register themselves on import — one grep-able line
+# per provider (M021 rule: no auto-discovery/entry-point magic; the
+# demo import sorts between its family's contract imports).
+from src.providers.satellite_demo import DemoSatelliteProvider  # noqa: F401  (registers on import)
+from src.providers.weather import WeatherProvider, WeatherReading, get_weather_provider
 from src.providers.weather_demo import DemoWeatherProvider  # noqa: F401  (registers on import)
 
 __all__ = [
     "KNOWN_FAMILIES",
     "BaseProvider",
+    "DemoSatelliteProvider",
     "DemoWeatherProvider",
     "ProviderError",
     "ProviderNotRegistered",
     "ProviderRegistry",
     "ProviderResponseInvalid",
     "ProviderUnavailable",
+    "SatelliteProvider",
+    "SatelliteReading",
     "WeatherProvider",
     "WeatherReading",
     "default_registry",
     "get_provider",
+    "get_satellite_provider",
     "get_weather_provider",
     "register",
 ]

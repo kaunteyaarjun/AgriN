@@ -42,7 +42,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M022 | Weather demo provider | P0 | M021 | done |
 | M023 | Weather ingestion service + storage table | P0 | M022, M019 | done |
 | M024 | Weather live provider (Open-Meteo) | P1 | M023 | not-started |
-| M025 | Satellite/NDVI demo provider | P0 | M021 | not-started |
+| M025 | Satellite/NDVI demo provider | P0 | M021 | done |
 | M026 | Satellite ingestion service + storage table | P0 | M025, M019 | not-started |
 | M027 | Satellite live provider | P1 | M026 | not-started |
 | M028 | Soil demo provider | P0 | M021 | not-started |
@@ -3404,3 +3404,164 @@ No live HTTP provider (M024), no unit/timeframe normalization
   weather doc with all raw fields + `observed_at` ISO) → `--farm`
   single mode `ingested` → cleanup left `observations remaining=0`.
   ALL PASS.
+
+---
+
+### M025 — Satellite/NDVI demo provider
+
+**Priority:** P0 **Depends On:** M021
+**Status:** done
+
+#### Objective
+First satellite-family pair: `src/providers/satellite.py` (the family
+contract — `SatelliteReading`, abstract `SatelliteProvider.fetch`,
+typed `get_satellite_provider`) plus `src/providers/satellite_demo.py`
+— a **deterministic, network-free** synthetic NDVI source registered on
+the default registry under `("satellite", "demo")`, so
+`get_satellite_provider()` works with default settings and M026's
+ingestion has something real to consume.
+
+#### Why This Milestone Exists
+M021 shipped only the weather family; satellite is the second family
+and proves the pattern generalizes (family ABC + typed getter +
+explicit registration line, zero weather-specific hooks). NDVI is the
+core agronomic signal behind crop-health overlays (M047+), and the
+demo story needs a stable, assertable backend for M026's pipeline.
+
+#### Files Expected to Be Created
+- `src/providers/satellite.py`
+- `src/providers/satellite_demo.py`
+- `tests/providers/test_satellite.py`
+
+#### Files Expected to Be Modified
+- `src/providers/__init__.py` (contract exports + explicit registration import)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None.
+
+#### External Dependencies
+None (stdlib `hashlib` only — same network-free demo rule as M022).
+
+#### Decisions
+- **Contract shape mirrors weather:** required `fetched_at` (UTC) +
+  `source`; optional payload `ndvi: float | None` (vegetation index)
+  and `cloud_cover_pct: float | None` (quality gate input for
+  M026/M031).
+- **`captured_at: datetime | None`** — a satellite scene is captured
+  at overpass time and fetched later; the demo sets it equal to
+  `fetched_at` ("just overflown"). M026 will store it as the scene
+  time. Weather needed no such field (fetch time == observation time).
+- **No pydantic range constraints on the payload** (consistent with
+  `WeatherReading`): documented demo ranges are test-enforced here;
+  validation/quality policy belongs to M031.
+- **Determinism:** same `sha256(f"{lat:.4f},{lon:.4f}")` seed scheme
+  as M022 — duplicated locally (2nd occurrence of the helper; extract
+  to a shared module only if M028's soil demo lands identical logic —
+  rule of three).
+- **Documented ranges** (checked by tests): `ndvi` 0.10–0.90 (2
+  decimals), `cloud_cover_pct` 0–100 (step 1).
+- `fetched_at` = `captured_at` = now (UTC); `source` = `name` =
+  `"demo-satellite-v1"`.
+- **Coordinate guard:** lat ∉ [-90,90] or lon ∉ [-180,180] →
+  `ValueError` (caller bug — not a `ProviderError`), same message
+  shape as weather's.
+- **Registration:** one comment-marked import line in
+  `src/providers/__init__.py` (M021's no-auto-discovery rule).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `satellite.py` contract (`SatelliteReading`, `SatelliteProvider`,
+   `get_satellite_provider`).
+3. `satellite_demo.py` (`DemoSatelliteProvider` + local seed helper).
+4. Exports + registration line in `src/providers/__init__.py`.
+5. Tests (pure unit).
+6. Gate, live check, docs, state, commits.
+
+#### Acceptance Criteria
+- [x] `get_satellite_provider()` under default settings returns the
+      demo provider through the normal registry path.
+- [x] Same coordinates → identical payload (`ndvi`,
+      `cloud_cover_pct`); two different coordinates → differing
+      payload.
+- [x] `ndvi` within 0.10–0.90, `cloud_cover_pct` within 0–100;
+      `SatelliteReading` validates; `source == "demo-satellite-v1"`;
+      `captured_at == fetched_at` (demo semantics), both UTC.
+- [x] Out-of-range coordinates → `ValueError`.
+- [x] Full quality gate green.
+
+#### Unit Tests Required
+All of the above (pure, fast, no DB/network).
+
+#### Integration Tests Required
+- [x] Registry path test: `get_provider("satellite")` (settings default
+  `demo`) resolves via the real `default_registry`.
+
+#### Security Checks Required
+- [x] No network, no keys, no PII; coordinates used only as hash input
+      (not logged).
+
+#### Performance Checks Required
+- [x] One sha256 per fetch; provider instance served from the registry
+      cache (no per-call construction).
+
+#### Memory/Resource Checks Required
+- [x] No resources to release; `aclose` stays the base no-op.
+
+#### Failure Scenarios to Handle
+- Invalid coordinates → `ValueError` with a safe message.
+- Demo provider cannot fail otherwise (no I/O); upstream failure
+  classes stay unexercised until M027's live provider.
+
+#### Rollback Strategy
+Delete `satellite.py` + `satellite_demo.py` + their import/export
+lines + tests; M021 pattern and the weather family untouched.
+
+#### Verification Commands
+```bash
+uv run pytest tests/providers -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No live satellite/NDVI API (M027), no `signals` document mapping or
+DB writes (M026 owns satellite ingestion), no NDVI time series /
+compositing / cloud masking / quality gating (M031+), no plot-level
+overlays (M047+).
+
+#### Verification & Notes (added on completion)
+- Delivered as spec'd: `src/providers/satellite.py`
+  (`SatelliteReading` with `ndvi`/`cloud_cover_pct`/`captured_at`,
+  abstract `SatelliteProvider.fetch`, typed `get_satellite_provider`
+  with isinstance guard) + `src/providers/satellite_demo.py`
+  (`DemoSatelliteProvider`, sha256 seed at 4-decimal precision,
+  documented ranges ndvi 0.10–0.90 / cloud 0–100, WGS84 guard,
+  `captured_at == fetched_at`) + exports/registration in
+  `src/providers/__init__.py`.
+- **Second family proves the pattern generalizes:** zero changes needed
+  to base/errors/registry/config (`satellite_provider` flag and
+  `KNOWN_FAMILIES` entry already existed from M009/M021) — only the
+  contract module, demo module, and one import/export block.
+- isort nuance: strict module sorting places `satellite_demo`'s
+  registration import *between* the two family contract imports
+  (`satellite` < `satellite_demo` < `weather`); the registration-list
+  comment was reworded to describe the grep-able `registers on import`
+  pattern instead of implying a contiguous block.
+- Tests: 14 new (`tests/providers/test_satellite.py`) — settings-path
+  registration (real `default_registry`), determinism (excl. both time
+  fields), distinct points differ, 5-point range grid incl. 2-decimal
+  ndvi + integer cloud assertions, demo time semantics
+  (`captured_at == fetched_at`, recent UTC), coordinate guard ×4,
+  seed stability incl. 4-decimal jitter absorption. 43 total in
+  `tests/providers`.
+- Gate: `scripts/check.ps1` PASSED — ruff format/check, mypy, **269
+  passed** (255 baseline + 14 new); bandit `-r -ll` on `src/providers`
+  + `tests/providers` = 0; pip-audit clean.
+- Live (`live_m025.py`, in-process): **10/10 ALL PASS** — settings
+  flag demo → registry resolution + typed accessor instance caching →
+  Nairobi reading (ndvi 0.46, cloud 49) → determinism → Mombasa
+  differs (ndvi 0.72, cloud 81) → source/time semantics →
+  out-of-range `ValueError`.
