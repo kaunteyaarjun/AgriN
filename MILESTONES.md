@@ -46,7 +46,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M026 | Satellite ingestion service + storage table | P0 | M025, M019 | done |
 | M027 | Satellite live provider | P1 | M026 | not-started |
 | M028 | Soil demo provider | P0 | M021 | done |
-| M029 | Soil ingestion service + storage table | P0 | M028, M019 | not-started |
+| M029 | Soil ingestion service + storage table | P0 | M028, M019 | done |
 | M030 | Soil live provider | P2 | M029 | not-started |
 | **Normalization** | | | | |
 | M031 | Data normalization layer (units/timeframes → Farm State) | P0 | M023, M026, M029 | not-started |
@@ -3936,3 +3936,205 @@ per-farm, M019 grain decision).
 - **Ordering note:** executed P0-first (human-confirmed 2026-09-28):
   M024/M027 (live providers, P1) intentionally deferred until the
   P0 trio (M025/M026/M028 + M029) is complete.
+---
+
+### M029 — Soil ingestion service + storage table
+
+**Priority:** P0 **Depends On:** M028, M019
+**Status:** done
+
+#### Objective
+Soil vertical completes the demo trio: rev `0009` creates the
+append-only `soil_observations` history table;
+`src/ingestion/soil.py` turns a `SoilReading` into (a) an observation
+row and (b) a `signals.soil` cache merge that **preserves every other
+family key** (`weather`, `satellite`); `workers/soil_ingest.py` runs
+it for all farms or one.
+
+**Rule-of-three refactor rides along:** `IngestResult` / `IngestSummary`
+/ `IngestStatus` are about to be copied a third time (defined
+verbatim in `src/ingestion/weather.py` since M023 and
+`src/ingestion/satellite.py` since M026) — they extract into
+`src/ingestion/_shared.py`, and the two existing services import from
+there (no external importers exist; internal behavior unchanged).
+
+#### Why This Milestone Exists
+Closes the third `signals` slot the farm-state cache was designed
+with (M019), and finishes the P0 demo slice: after this milestone
+every family has provider → ingestion → storage working offline, so
+the P1 live providers (M024/M027) and M030 land against a proven
+pipeline.
+
+#### Files Expected to Be Created
+- `src/models/soil_observation.py`
+- `alembic/versions/0009_soil_observations.py` (hand-written)
+- `src/ingestion/soil.py`
+- `src/ingestion/_shared.py`
+- `workers/soil_ingest.py`
+- `tests/ingestion/test_soil_ingestion.py`
+
+#### Files Expected to Be Modified
+- `src/ingestion/weather.py`, `src/ingestion/satellite.py` (import
+  the shared result types — definitions removed, call sites unchanged)
+- `src/models/__init__.py` (export `SoilObservation`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+`alembic` revision **0009** (down_revision `0008`), one table:
+
+```
+soil_observations
+  id            uuid PK (client-side uuid4)
+  farm_id       uuid NOT NULL FK → farms.id ON DELETE CASCADE
+  provider      varchar(40) NOT NULL
+  observed_at   timestamptz NOT NULL  -- in-situ: = reading.fetched_at
+  soil_moisture_pct float NULL
+  ph            float NULL
+  soil_temperature_c float NULL
+  nitrogen_kg_ha float NULL
+  created_at    timestamptz NOT NULL, server_default now()
+  INDEX (farm_id, observed_at) ASC   -- same convention as 0007/0008
+```
+
+- Append-only: no `updated_at`, no updates through the service.
+- **No `raw_units` JSONB** (same rationale as 0008): units are encoded
+  in the column names (`_pct`, `_c`, `_kg_ha`); nothing to recover.
+- No `captured_at` column: soil is in-situ (fetch time == observation
+  time; unlike satellite's 0008).
+- `tests/test_migrations.py`'s derived-head assertion auto-covers the
+  new revision.
+
+#### API Changes / Frontend Changes
+None.
+
+#### External Dependencies
+None.
+
+#### Decisions
+- **Structure mirrors `src/ingestion/weather.py` /
+  `src/ingestion/satellite.py` line-for-line:** fetch-before-write,
+  observation commit then cache merge (two-step), centroid via
+  `ST_X/ST_Y(ST_Centroid(Farm.geo))`, per-farm try/except + rollback
+  isolation, `NotFound` / `skipped_no_geo` statuses, sequential batch,
+  logger `agrin.ingestion.soil`.
+- **`observed_at` = `reading.fetched_at`** (no `captured_at` on
+  `SoilReading`).
+- **`signals.soil` doc:** `{soil_moisture_pct, ph,
+  soil_temperature_c, nitrogen_kg_ha, observed_at (ISO), source}`;
+  `refreshed_at` = `reading.fetched_at`.
+- **Shared extraction:** `src/ingestion/_shared.py` owns
+  `IngestStatus` / `IngestResult` / `IngestSummary` (moved verbatim);
+  weather + satellite switch their imports (grep proved zero external
+  importers — tests reference only the `ingest_*` functions and
+  `*_signals_doc`). Soil imports them directly from `_shared`.
+- **Worker CLI mirrors the other two:** `--farm` optional, status
+  lines + summary, exit 0 with per-farm failures.
+- ASC index + hand-written migration + `alembic check` parity (M023
+  lesson carried through).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `_shared.py` extraction; weather + satellite import switch.
+3. Model + export; hand-written migration 0009.
+4. `src/ingestion/soil.py`.
+5. `workers/soil_ingest.py`.
+6. Tests (`test_soil_ingestion.py`, mirror of the other two suites).
+7. `alembic check`, gate, live check, docs, state, commits.
+
+#### Acceptance Criteria
+- [x] Ingest on a geo farm → observation row + `signals.soil`
+      populated; pre-existing `weather` + `satellite` keys survive.
+- [x] Farm with NULL geo → `skipped_no_geo`, no provider call, no row.
+- [x] Failing provider (fake) → `provider_error`, zero rows written.
+- [x] Second ingest → second observation row; `observed_at` equals
+      `fetched_at` (in-situ time).
+- [x] Unknown farm → `NotFound`.
+- [x] Weather + satellite ingestion suites still green after the
+      `_shared` extraction.
+- [x] Worker end-to-end on dev DB (live check), incl. `--farm` mode.
+- [x] `alembic check` clean; full quality gate green.
+
+#### Unit Tests Required
+- [x] `soil_signals_doc` mapping (ISO `observed_at`, all four payload
+      fields, source).
+
+#### Integration Tests Required
+All acceptance paths above against dev Postgres; seeded rows cleaned
+by scoped user delete (FK cascade).
+
+#### Security Checks Required
+- [x] No authz surface (no HTTP); worker is a trusted local process.
+- [x] No secrets in logs — status lines carry farm id + status only.
+
+#### Performance Checks Required
+- [x] Per farm: 1 provider call + ≤5 small queries; sequential batch.
+
+#### Memory/Resource Checks Required
+- [x] One session for the whole worker run, closed at the end;
+      engine disposed on exit.
+
+#### Failure Scenarios to Handle
+- Unknown farm → `NotFound`; no geometry → skip; `ProviderError` →
+  status without writes; anything else → `failed` + rollback, batch
+  continues. `_db` fixture on every DB-touching test (house rule).
+
+#### Rollback Strategy
+`alembic downgrade 0008`, delete the new files + export line; the
+`_shared.py` extraction reverts independently (weather/satellite keep
+working either way — same class shapes).
+
+#### Verification Commands
+```bash
+uv run pytest tests/ingestion tests/test_migrations.py -v
+uv run alembic check
+uv run python -m workers.soil_ingest --farm <uuid>
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No live soil API (M030), no quality gating/measurement science
+(M031+), no scheduler/cron, no ingestion API endpoints, no plot-level
+soil variation (per-farm grain, M019).
+
+#### Verification & Notes (added on completion)
+- Delivered as spec'd: rev 0009 `soil_observations` (hand-written,
+  `alembic check` = "No new upgrade operations detected"),
+  `SoilObservation` + export, `src/ingestion/soil.py`
+  (`soil_signals_doc` / `ingest_soil_for_farm` / `ingest_soil_for_all`,
+  logger `agrin.ingestion.soil`), `workers/soil_ingest.py`
+  (`--farm` optional), `src/ingestion/_shared.py`.
+- **Rule-of-three extraction landed:** `IngestStatus`/`IngestResult`/
+  `IngestSummary` moved verbatim into `src/ingestion/_shared.py`;
+  weather + satellite switched to the shared import (grep proved zero
+  external importers — call sites and test references unchanged).
+  Guard test (`test_shared_result_types_used_by_all_families`)
+  asserts identity of the classes across all three modules; weather +
+  ingestion suites stayed green (32/32 in `tests/ingestion`).
+- **All three family slots now coexist:** live check pre-seeded
+  `weather` + `satellite` keys and proved both survive the soil merge
+  (cache = `{weather, satellite, soil}`), the final M019 design state.
+- `observed_at` = `fetched_at` (in-situ; no `captured_at` anywhere in
+  soil's schema or contract).
+- Tests: 11 new (`tests/ingestion/test_soil_ingestion.py`) — shared
+  extraction guard, signals-doc mapping, merge preserving weather +
+  satellite keys + `refreshed_at == fetched_at`, default-settings
+  provider path (proves M028 wiring), append-only history, no-geo
+  skip without provider call, provider-failure zero writes,
+  `NotFound`, batch counts, batch isolation, worker `_run` print.
+  **306 total.**
+- Gate: `scripts/check.ps1` PASSED — ruff format/check, mypy, **306
+  passed** (295 baseline + 11 new); bandit `-r -ll` on `src/ingestion`
+  + `src/models` + `workers` + `tests/ingestion` = 0; pip-audit clean.
+- Live (live_m029.py + real worker): seeded 2 farms (geo/no-geo,
+  weather+satellite keys pre-seeded) → `python -m workers.soil_ingest`
+  ×2 (both: `ingested=1 skipped_no_geo=1 provider_error=0 failed=0`;
+  verify after run 2 = **8/8**: 2 append-only rows, moisture 28.5 /
+  ph 6.2 in range, weather + satellite keys survived, soil cache doc
+  complete, no_geo clean) → `--farm` mode `ingested` → cleanup left
+  `soil observations remaining=0`. ALL PASS.
+- **P0 demo trio complete (M025/M026/M028/M029).** Next per
+  human-confirmed ordering: P1s M024 (weather live) / M027 (satellite
+  live), then P2 M030 (soil live).

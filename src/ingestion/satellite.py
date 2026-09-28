@@ -24,44 +24,19 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import NotFound
+from src.ingestion._shared import IngestResult, IngestSummary
 from src.models import Farm, FarmSignalCache, SatelliteObservation
 from src.providers.errors import ProviderError
 from src.providers.satellite import SatelliteProvider, SatelliteReading, get_satellite_provider
 from src.services.farm_state import put_signals
 
 logger = logging.getLogger("agrin.ingestion.satellite")
-
-IngestStatus = Literal["ingested", "skipped_no_geo", "provider_error", "failed"]
-
-
-class IngestResult(BaseModel):
-    """Outcome of one farm's ingestion attempt."""
-
-    farm_id: uuid.UUID
-    status: IngestStatus
-    observation_id: uuid.UUID | None = None
-    detail: str | None = None
-
-
-class IngestSummary(BaseModel):
-    """Aggregate outcome of a batch run."""
-
-    ingested: int = 0
-    skipped_no_geo: int = 0
-    provider_error: int = 0
-    failed: int = 0
-    results: list[IngestResult] = []
-
-    def record(self, result: IngestResult) -> None:
-        self.results.append(result)
-        setattr(self, result.status, getattr(self, result.status) + 1)
 
 
 def satellite_signals_doc(reading: SatelliteReading) -> dict[str, Any]:

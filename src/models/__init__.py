@@ -13,6 +13,7 @@ from src.models.farmer import Farmer
 from src.models.plot import Plot
 from src.models.plot_state import GROWTH_STAGES, PlotState
 from src.models.satellite_observation import SatelliteObservation
+from src.models.soil_observation import SoilObservation
 from src.models.user import User, UserRole
 from src.models.weather_observation import WeatherObservation
 
@@ -25,6 +26,7 @@ __all__ = [
     "Plot",
     "PlotState",
     "SatelliteObservation",
+    "SoilObservation",
     "User",
     "UserRole",
     "WeatherObservation",
