@@ -76,6 +76,7 @@ Last test result: "pytest = 576 passed (disease 12, images-API 10, recommend 22,
 | M033 | `9a494b9` |
 | M034 | `66b26a2` |
 | M035 | `998d2eb` |
+| M036 | `980298e` |
 
 ## Notes / findings
 
