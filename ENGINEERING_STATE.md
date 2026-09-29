@@ -82,6 +82,7 @@ Last test result: "pytest = 668 passed (analysis 7, advisory-API 5, advisory 17,
 | M039 | `35bd565` |
 | M040 | `f38f448` |
 | M041 | `ac6ddda` |
+| M043 | `17eeb78` |
 
 ## Notes / findings
 
