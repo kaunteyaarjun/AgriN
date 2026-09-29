@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "(none in progress) — M040 (LLM provider interface + templated demo) is done; the fifth provider family now has a contract behind it. Next per roadmap: M041 AI advisory generation service (deps M039 + M040 met) → M043 advisory API; then M044/M045 what-if (M039 met) and the 🔒 frontend chain (M046 needs approval). Remaining 🔒 checkpoints: M042 (LLM live), M046 (frontend bootstrap), M058. M030 stays P2 (see Next milestone)."
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037", "M039", "M040"]
-Current implementation status: "M040 done: LLM provider interface + demo provider (templated) — new src/providers/llm.py (LLMRequest/LLMResponse/LLMUsage validated at the boundary, abstract LLMProvider.complete(request), typed get_llm_provider) plus src/providers/llm_demo.py registered at ('llm','demo') through the normal M021 path. Contract: one round-trip, no streaming and no chat history; system = instructions, prompt = content; bounds at construction (prompt 1–16000 chars and not blank, system ≤4000, max_tokens 1..8192 default 2048, temperature 0..1 default 0.2, text 1..65536, usage ≥0, finish_reason stop|length). Demo = fixed template, never a model: request_seed (sha256 of system+prompt+max_tokens+temperature) picks one of 3 OPENINGS, then the caller's prompt word-truncated to max_tokens*CHARS_PER_TOKEN(4); system is NEVER echoed (instructions are not advice), prompt is quoted verbatim when it fits; truncation → finish_reason='length'; usage estimated ceil(chars/4) per side with total = sum (no sum invariant on the model, so M042 need not contradict its upstream). Zero new dependencies, no DB, no endpoint, no key handling."
+Current milestone: "(none in progress) — M041 (AI advisory generation service) is done: decision → prompt → validated text now exists as one callable step, with M041-owned data-gap caveats that no model can drop. Next per roadmap: M043 advisory API (dep M041 met) → M044/M045 what-if (M039+M041 chain met) → the 🔒 frontend chain (M046 needs approval). Remaining 🔒 checkpoints: M042 (LLM live), M046 (frontend bootstrap), M058. M030 stays P2 (see Next milestone)."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037", "M039", "M040", "M041"]
+Current implementation status: "M041 done: AI advisory generation service — new src/ai/advisory.py (first content in the package reserved since M001). generate_advisory(decision, *, provider=None) → Advisory(farm_id, stance, text, caveats, source, finish_reason, generated_at) + .rendered property. build_request(decision) is pure/deterministic: M040's split is honoured exactly (ADVISORY_SYSTEM = instructions only, prompt = facts only), actions copied verbatim in the decision's own order with priority tags, capped at PROMPT_ACTION_LIMIT=15 with '... and N more actions not shown' (a 100-action farm stays under PROMPT_MAX_CHARS and under the demo's max_tokens×4 budget, so demo mode never truncates advice). Output policy all raises ProviderResponseInvalid (one error path for M043): whitespace-only text, text > ADVISORY_MAX_CHARS(4000), or the system instruction echoed back; ProviderError from the provider propagates untouched. advisory_caveats() is M041-owned and appended outside the model (stale families, then blind plots) — the same gaps also travel inside the facts as M034 data-quality actions, so the prompt has no separate data-gap section. No clock read (generated_at comes from the response); no DB, no endpoint."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -18,10 +18,10 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks:
-  - "P1 milestones M051, M052, M053 are dependency-blocked: M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046. M038 (disease live model, P1/P2) waits on a live-model decision. P0s still unstarted: M041, M043, M044, M045, M046–M050 (M031–M037, M039, M040 now done) — spec them just-in-time per Section 8. M042 (LLM live) and M046 (frontend) additionally need 🔒 human checkpoints."
-Next milestone: "Roadmap order: M041 AI advisory generation service (decision → prompt → validated text; deps M039 ✓ + M040 ✓) → M043 advisory API. Then M044/M045 what-if (M039's dependency met) and the 🔒 frontend chain (M046 needs approval). Unblocked alternates: M054 (demo seed, deps M016+M018 met), M030 (soil live, P2), M038 (needs a live-model decision). Remaining locks: M042 (LLM live), M046 (frontend), M058. M041 must honour M040's contract rule: every farmer-visible fact goes in LLMRequest.prompt, instructions in system (the demo renders only prompt)."
-Last verification: "M040 gate PASSED with live dev DB (65432): ruff format OK (131 files), ruff check OK, mypy OK (128 sources), pytest 639 passed / 0 skipped (24 new provider tests); bandit -r -ll on src + workers = 0; pip-audit clean — no new dependencies (pydantic + stdlib only). Fifth provider family: contract + templated demo, no DB, no network, no key."
-Last test result: "pytest = 639 passed (llm 24, decision 21, disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+  - "P1 milestones M051, M052, M053 are dependency-blocked: M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046. M038 (disease live model, P1/P2) waits on a live-model decision. P0s still unstarted: M043, M044, M045, M046–M050 (M031–M037, M039–M041 now done) — spec them just-in-time per Section 8. M042 (LLM live) and M046 (frontend) additionally need 🔒 human checkpoints."
+Next milestone: "Roadmap order: M043 advisory API (dep M041 ✓) → M044 what-if simulation engine (deps M039 ✓ + M041 ✓) → M045 what-if API. Then the 🔒 frontend chain (M046 needs approval; M047–M050 follow). Unblocked alternates: M054 (demo seed, deps M016+M018 met), M030 (soil live, P2), M038 (needs a live-model decision). Remaining locks: M042 (LLM live), M046 (frontend), M058. M043 must map ProviderError → one upstream-failure response (M041's design gave it a single error path) and serve Advisory.rendered + caveats separately for M050."
+Last verification: "M041 gate PASSED with live dev DB (65432): ruff format OK (134 files), ruff check OK, mypy OK (131 sources), pytest 656 passed / 0 skipped (17 new advisory tests); bandit -r -ll on src + workers = 0; pip-audit clean — no new dependencies. First content in the src/ai/ package (reserved since M001); no DB, no endpoint, no clock read."
+Last test result: "pytest = 656 passed (advisory 17, llm 24, decision 21, disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -433,3 +433,32 @@ Last test result: "pytest = 639 passed (llm 24, decision 21, disease-engine 18, 
   slicing a prompt's leading whitespace can yield an empty body. Fall
   back to the raw prefix, then to the header alone. Any future
   "trim to budget" helper should copy both rungs.
+- 2026-09-30 (M041): **the reserved `src/ai/` package finally opened
+  for business** (empty since M001). Boundary now written down:
+  `src/ai/` = decision → text *with* provider I/O, `src/services/` =
+  DB/state I/O, `src/engines/` = pure rules. Reserve the directory
+  when the skeleton lands; filling it later costs a docstring.
+- 2026-09-30 (M041): **honesty is never delegated.** Data gaps travel
+  twice — as M034's data-quality actions inside the prompt facts, and
+  as `Advisory.caveats`, appended by M041 outside the model's control.
+  Deliberately *no* separate "data gaps" section in the prompt: the
+  demo echoes `prompt`, so one would have printed the same sentence
+  twice in demo mode.
+- 2026-09-30 (M041): a fully empty model response **cannot** reach
+  M041 — M040's `LLMResponse.text` is `min_length=1`, so the
+  whitespace-only case is the only blank M041 has to strip-and-reject.
+  Two boundaries, one gap, each documented where it is enforced.
+- 2026-09-30 (M041): `PROMPT_ACTION_LIMIT=15` is not cosmetic — it is
+  what keeps demo mode from **silently truncating advice** (the demo
+  budget is `max_tokens × 4 = 8 192` chars). A `finish_reason="length"`
+  on an advisory would be advice cut mid-sentence; the prompt bound
+  test asserts the budget directly so a future cap change fails loudly.
+- 2026-09-30 (M041): `ProviderResponseInvalid` was reused for M041's
+  own output policy (blank, over-length, instruction echo) instead of
+  inventing a second error type — M043 therefore needs exactly one
+  upstream-failure mapping, and `ProviderError` from the provider still
+  passes through by identity.
+- 2026-09-30 (M041): M041 reads no clock (`generated_at` is the
+  provider's), so decision → advisory is re-runnable for M044 without
+  the clock-injection dance the engines need. Keep that property when
+  adding any step to the pipeline.

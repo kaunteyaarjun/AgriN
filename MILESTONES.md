@@ -62,7 +62,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **Decision engine & AI advisory** | | | | |
 | M039 | Structured agricultural decision engine (aggregation) | P0 🔒 approved (D9) | M033, M034, M037 | done |
 | M040 | LLM provider interface + demo provider (templated) | P0 | M021 | done |
-| M041 | AI advisory generation service (decision → prompt → validated text) | P0 | M039, M040 | not-started |
+| M041 | AI advisory generation service (decision → prompt → validated text) | P0 | M039, M040 | done |
 | M042 | LLM live provider integration | P0 🔒 | M040 | not-started |
 | M043 | Advisory API endpoint | P0 | M041 | not-started |
 | **What-if simulation** | | | | |
@@ -6312,3 +6312,182 @@ streaming, no stored token accounting.
 - **Not built (per spec):** no live model or key handling (M042, 🔒),
   no prompt construction from `FarmDecision` / advisory phrasing (M041),
   no endpoint (M043), no persistence, no streaming.
+
+### M041 — AI advisory generation service (decision → prompt → validated text)
+
+**Priority:** P0 **Depends On:** M039, M040
+**Status:** done
+
+#### Objective
+`src/ai/advisory.py` — `generate_advisory(decision, *, provider=None)`
+→ `Advisory`. It renders a `FarmDecision` (M039) deterministically into
+an `LLMRequest` (instructions in `system`, farmer-visible facts in
+`prompt`, per M040's contract rule), calls the LLM provider, validates
+the returned text, and attaches the **data-gap caveats M041 owns and no
+model may omit**. `build_request(decision)` and `advisory_caveats(decision)`
+are pure and separately testable.
+
+#### Why This Milestone Exists
+M043 must serve *one* answer and M050 render *one* verdict, both with
+the honesty guarantees already applied — not re-derived per endpoint.
+M044 re-runs the pipeline hypothetically, so advisory generation has to
+be a callable step in that re-run, not something embedded in a route.
+
+#### Files Expected to Be Created
+- `src/ai/advisory.py`
+- `tests/ai/__init__.py`
+- `tests/ai/test_advisory.py`
+
+#### Files Expected to Be Modified
+- `src/ai/__init__.py` (exports + package docstring — the package has
+  been an empty reserved slot since M001)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None. No table, no endpoint, no persistence — an advisory is computed
+on demand (M043 exposes it).
+
+#### API Changes
+None (M043 exposes it).
+
+#### External Dependencies
+None new — pydantic + the existing engine/provider modules.
+
+#### Design Decisions
+- **Package boundary:** `src/ai/` owns decision → text (prompt
+  construction, the provider call, output validation). `src/services/`
+  stays DB/state I/O, `src/engines/` stays pure rules over handed-in
+  data. `build_request` is pure; only `generate_advisory` does I/O.
+- **`Advisory`** = `farm_id`, `stance`, `text`, `caveats`, `source`,
+  `finish_reason`, `generated_at`, plus a `rendered` property joining
+  `text` and the caveats with blank lines. `generated_at` is the
+  *provider's* timestamp — M041 reads no clock itself.
+- **Facts are copied, never re-derived.** Action `title`/`detail` land
+  in the prompt verbatim (M032/M033/M039 evidence-reuse rule), in the
+  decision's own total order, prefixed with priority; risk score/band,
+  health level, stance, plot count and the four disease verdict counts
+  are echoed as-is.
+- **The prompt is bounded:** at most `PROMPT_ACTION_LIMIT = 15` actions
+  are listed, the remainder summarised as `... and N more actions not
+  shown` — a farm with 100 actions still builds a request inside
+  `PROMPT_MAX_CHARS` and inside the demo's `max_tokens × 4` budget, so
+  demo mode never truncates a real advisory.
+- **Data gaps are handled twice, on purpose:** already present in the
+  facts as M034's `soon` data-quality actions (the model sees the
+  blindness as work to do), and *guaranteed* by M041's own `caveats`
+  list appended outside the model's control. The prompt carries no
+  separate "data gaps" section, so the demo (which echoes `prompt`) does
+  not print the same sentence twice.
+- **Caveats are M041-owned:** stale signal families and the count of
+  plots with unknown health factors, worded once here. A model may
+  repeat them; it can never drop them (M034's rule: explain the
+  blindness rather than quoting `healthy`).
+- **Output validation reuses the provider taxonomy.** Blank-after-strip
+  text, text over `ADVISORY_MAX_CHARS` (4 000), or output containing
+  the system instruction verbatim (the model echoed instructions as
+  advice — the exact failure M040's demo prevents structurally) all
+  raise `ProviderResponseInvalid`, so M043 has **one** error path for
+  "upstream gave us something unusable". `ProviderError` subclasses from
+  the provider propagate untouched.
+- **Provider is injectable** (`provider=` keyword) and defaults to
+  `get_llm_provider()` — settings-driven through the normal M021 path.
+- **No caller-bug guards needed:** `FarmDecision` is already a
+  validated pydantic model with M039's own guards upstream.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/ai/advisory.py`: constants, `Advisory`, `build_request`,
+   `advisory_caveats`, `generate_advisory`.
+3. `src/ai/__init__.py`: exports + package docstring.
+4. `tests/ai/test_advisory.py`.
+5. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+`tests/ai/test_advisory.py` (pure unit — no DB, no network):
+- [x] `build_request` is deterministic (same decision → identical
+  request) and honours the M040 split: `system` holds instructions and
+  never any fact; `prompt` holds facts and never the instruction text.
+- [x] facts verbatim: every shown action's `title` and `detail`
+  appear in the prompt; stance, health level, risk score/band, plot
+  count and all four verdict counts appear; > 15 actions → the
+  `... and N more actions not shown` line.
+- [x] prompt bounds: a 100-action decision still fits
+  `PROMPT_MAX_CHARS`; `system` fits `SYSTEM_MAX_CHARS` and the prompt
+  fits the demo's `max_tokens × 4` budget.
+- [x] caveats: clean decision → none; stale families → one naming each
+  family; unknown-factor plots → one with the count (singular/plural
+  worded correctly); both → two in a stable order; `rendered` joins
+  text and caveats.
+- [x] end-to-end through the default (demo) provider: non-empty text
+  built from the request, `source`/`finish_reason`/`generated_at`
+  passed through, `farm_id`/`stance` echoed.
+- [x] validation: whitespace-only text → `ProviderResponseInvalid`;
+  over-length text → same; text containing the system instruction →
+  same (a fully empty response cannot reach M041 — `LLMResponse.text`
+  is `min_length=1` from M040).
+- [x] a stub raising `ProviderUnavailable` propagates unchanged
+  (identity asserted).
+- [x] no clock read by M041 (`generated_at` equals the stub's fixed
+  timestamp).
+
+#### Verification Commands
+```bash
+uv run pytest tests/ai/test_advisory.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No endpoint (M043), no persistence, no prompt *content* beyond what
+M039's decision carries (no new agronomic rules — M041 adds no
+thresholds), no streaming, no live model or key handling (M042, 🔒),
+no what-if machinery (M044), no frontend rendering (M050).
+
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED with live dev DB (65432) — ruff
+  format OK (134 files), ruff check OK, mypy OK (131 sources), pytest
+  **656 passed / 0 skipped** (+17 advisory tests). Bandit `-r -ll` on
+  `src` + `workers` = 0 findings; pip-audit clean. **No new
+  dependencies.**
+- **Files:** created `src/ai/advisory.py`, `tests/ai/__init__.py`,
+  `tests/ai/test_advisory.py`; modified `src/ai/__init__.py` (first
+  content — the package has been an empty reserved slot since M001).
+  No DB, no endpoint, no migration.
+- **Findings:**
+  - **The reserved package paid off.** `src/ai/` needed only a
+    docstring and re-exports. The boundary is now written down:
+    `src/ai/` = decision → text *with* provider I/O, `src/services/`
+    = DB/state I/O, `src/engines/` = pure rules over handed-in data.
+  - **Honesty is never delegated.** Caveats (stale families, blind
+    plots) are appended by M041 outside the model's control, and the
+    same gaps already travel *inside* the facts as M034's
+    data-quality actions — so the prompt carries no separate "data
+    gaps" section. Adding one would have made demo mode print the same
+    sentence twice (the demo echoes `prompt`).
+  - The output policy reuses `ProviderResponseInvalid`, giving M043
+    **one** error path for "upstream gave us something unusable":
+    blank-after-strip, over `ADVISORY_MAX_CHARS`, or instruction echo.
+    `ProviderError` from the provider passes through untouched
+    (identity asserted in the test).
+  - **A fully empty response can never reach M041** — M040's
+    `LLMResponse.text` is `min_length=1`, so the blank-text test had
+    to use whitespace-only input. Caught while writing the test; the
+    reason is recorded in the checkbox rather than hidden.
+  - The prompt is bounded *by construction*: `PROMPT_ACTION_LIMIT=15`
+    keeps a 100-action farm at ~1 900 chars — inside
+    `PROMPT_MAX_CHARS` (16 000) and inside the demo's
+    `max_tokens × 4 = 8 192` budget, so demo mode can never truncate
+    an advisory (`finish_reason="length"` on an advisory would be a
+    silent truncation of advice).
+  - `Advisory.generated_at` is the *provider's* timestamp: M041 reads
+    no clock, which is what lets M044 re-run the whole
+    decision → advisory step without clock injection.
+  - Provider injection (`provider=`) means the validation tests need
+    no registry monkeypatch — the M040 keyword exists for exactly
+    this.
+- **Not built (per spec):** no endpoint (M043), no persistence, no new
+  agronomic thresholds, no live model or key handling (M042, 🔒), no
+  what-if (M044), no frontend (M050).
