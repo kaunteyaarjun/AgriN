@@ -9,7 +9,8 @@ without fixtures.
 Five engines ship so far: M032 health (``health``), M033 risk
 (``risk``), M034 recommendations (``recommend``), M037 disease
 (``disease``), M039 decision (``decision``) — and M043's ``pipeline``
-chains them in that order behind one injectable clock.
+chains them in that order behind one injectable clock; M044's
+``whatif`` re-runs that chain on a perturbed state.
 """
 
 from src.engines.decision import (
@@ -67,6 +68,7 @@ from src.engines.risk import (
     assess_farm_risk,
     risk_band,
 )
+from src.engines.whatif import WHAT_IF_KNOBS, WhatIfChanges, WhatIfResult, simulate_what_if
 
 __all__ = [
     "ACTION_ORIGINS",
@@ -92,6 +94,7 @@ __all__ = [
     "SEVERITY_POINTS",
     "STALE_AFTER_SECONDS",
     "SUSPECTED_MIN",
+    "WHAT_IF_KNOBS",
     "CropProfile",
     "DecisionAction",
     "DiseaseAssessment",
@@ -105,6 +108,8 @@ __all__ = [
     "PlotHealth",
     "Recommendation",
     "RiskItem",
+    "WhatIfChanges",
+    "WhatIfResult",
     "assess_disease",
     "assess_farm_health",
     "assess_farm_risk",
@@ -115,4 +120,5 @@ __all__ = [
     "recommend_farm_actions",
     "risk_band",
     "run_analysis",
+    "simulate_what_if",
 ]

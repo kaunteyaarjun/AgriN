@@ -66,7 +66,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M042 | LLM live provider integration | P0 🔒 | M040 | not-started |
 | M043 | Advisory API endpoint | P0 | M041 | done |
 | **What-if simulation** | | | | |
-| M044 | What-if simulation engine (hypothetical re-run of decision pipeline) | P0 | M039 | not-started |
+| M044 | What-if simulation engine (hypothetical re-run of decision pipeline) | P0 | M039, M043 | in-progress |
 | M045 | What-if simulation API | P0 | M044 | not-started |
 | **Frontend** | | | | |
 | M046 | Frontend bootstrap (Vite+React+TS+Tailwind, auth flow) | P0 🔒 | M009 | not-started |
@@ -6627,6 +6627,140 @@ No disease/persistence (M049), no live model or key handling (M042,
 🔒), no what-if inputs or hypothetical re-run (M044/M045), no decision
 dashboard fields or frontend (M047/M050), no rate limiting (M055), no
 advisory caching or storage.
+
+### M044 — What-if simulation engine (hypothetical re-run)
+
+**Priority:** P0 **Depends On:** M039, M043
+**Status:** in-progress
+
+#### Objective
+`src/engines/whatif.py` — `simulate_what_if(state, overrides, *,
+now=None, disease=()) -> WhatIfResult`. It validates a closed set of
+signal overrides against the farm's *stored* document, rebuilds the
+normalized state under one clock, re-runs the whole pipeline (M043's
+`run_analysis`) twice — once untouched as the baseline, once on the
+hypothetical — and returns both analyses plus a structured diff
+(`WhatIfChanges`) and the overrides that were actually applied.
+
+#### Why This Milestone Exists
+The roadmap's "what-if simulation" story needs a *pure* core before the
+API (M045) and the UI (M051) exist: "if it does not rain / if I
+irrigate / if the canopy drops, what changes?" must be answerable
+without a request object, a session or a clock of its own. M039's spec
+already called this milestone a *clean orchestration — perturb state →
+re-run the four → re-aggregate*, and M043 delivered exactly the chain
+(`run_analysis`) it re-runs.
+
+#### Files Expected to Be Created
+- `src/engines/whatif.py`
+- `tests/engines/test_whatif.py`
+
+#### Files Expected to Be Modified
+- `src/engines/__init__.py` (exports + package docstring)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None — pure computation over handed-in state; no reads, no writes.
+
+#### API Changes
+None (M045 exposes it).
+
+#### External Dependencies
+None new — pydantic + M031's normalizer + M043's `run_analysis`.
+
+#### Design Decisions
+- **A knob must be able to move the verdict.** Six overrides ship, one
+  per field an engine actually scores: `weather.temperature_c`,
+  `weather.rainfall_mm_24h`, `soil.soil_moisture_pct`, `soil.ph`,
+  `soil.nitrogen_kg_ha`, `satellite.ndvi`. Deliberately *excluded*:
+  `humidity_pct`, `wind_speed_kmh`, `soil_temperature_c`,
+  `cloud_cover_pct` (M031 normalizes them; no engine reads them) and
+  `condition` (a vocabulary, not a number, and also unread). A slider
+  that cannot change an answer is a lie to the user; `WHAT_IF_KNOBS`
+  is the catalogue M045/M051 must derive their limits from.
+- **Overrides are expressions of *current* conditions, so an
+  overridden family is re-stamped to the simulation clock** (its
+  `observed_at` becomes `now`, its `source` kept if the family already
+  existed). Otherwise a stale baseline would make M032 discard the very
+  value the user just changed — the classic silent no-op. The families
+  touched this way are reported in `WhatIfResult.simulated_families` so
+  the UI can say "simulated as of now".
+- **Never invent provenance:** a family the farm never ingested is
+  *materialized* with `observed_at = now` and **no `source`** — the
+  knob works for everything that needs no timeframe, and `rainfall`
+  (which needs M031's window) raises a clear `ValueError` instead of
+  pretending a window exists. No source string is ever fabricated.
+- **Validation before normalization:** families/fields come from
+  `WHAT_IF_KNOBS`, values must be `int | float` (never `bool`) and
+  inside M031's own exported ranges (`EARTH_TEMPERATURE_RANGE`,
+  `PERCENT_RANGE`, `NDVI_RANGE`, `PH_RANGE`; non-negative knobs use
+  `(0.0, None)`). Out-of-range numbers would otherwise be silently
+  normalized to `None` — turning a hypothetical into an unknown factor.
+  Empty overrides are rejected (a simulation with nothing changed is a
+  request bug), as is a family present but not a mapping.
+- **One clock for both runs.** Baseline and hypothetical share the
+  single `now`, so their `computed_at`s, ages and staleness are
+  comparable to the second; `run_analysis` is called twice with that
+  same moment.
+- **The diff is the headline, not the whole story.** `WhatIfChanges`
+  carries `stance`, `health_level`, `risk_score_delta`,
+  `risk_band`, `action_counts_delta`, `actions_added`,
+  `actions_removed` (matched by `(origin, code, plot_id)` with
+  multiset semantics). Both full `FarmAnalysis` objects are in the
+  result, so any richer diff remains derivable without a second call.
+- **Disease flows through as `disease=()`** (nothing persists M037
+  assessments; same documented seam as M043) so a future M049 flow can
+  feed assessments into a simulation without changing this signature.
+- **No advisory text here.** M041 stays a separate step; M045 may call
+  `generate_advisory(result.hypothetical.decision)` if a hypothetical
+  prose answer is wanted.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/engines/whatif.py`: `WHAT_IF_KNOBS`, `WhatIfChanges`,
+   `WhatIfResult`, `_apply_overrides`, `_changes`, `simulate_what_if`.
+3. `src/engines/__init__.py`: exports + docstring line.
+4. `tests/engines/test_whatif.py`.
+5. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+- [ ] `simulate_what_if` is pure and deterministic (same inputs →
+  identical result), reads no clock beyond `now`, touches no DB/network;
+  the untouched baseline equals `run_analysis(state, ..., now=now)`.
+- [ ] both runs share one clock (`computed_at == now` for all eight
+  engine answers) and `changes` compares like for like.
+- [ ] every knob is proven to move an engine answer (a sweep asserting
+  each of the six changes health/risk/decision outcome), and an
+  override equal to the current value yields an all-zero diff.
+- [ ] validation: unknown family, unknown field, non-numeric value,
+  `bool`, out-of-range value (pH 20, ndvi 2, temp 100, moisture −5),
+  empty overrides, family present-but-not-a-mapping, and rainfall on a
+  family with no measurement window — each a `ValueError` naming the
+  offending knob.
+- [ ] a materialized family gets `observed_at == now` and `source is
+  None`; a pre-existing family keeps its source; `simulated_families`
+  lists exactly the touched families.
+- [ ] staleness interaction: a stale weather baseline + a temperature
+  knob → the family leaves `stale_families` in the hypothetical (the
+  re-stamp), and `risk_score_delta` reflects the removed staleness
+  points.
+- [ ] diff: dry-soil → irrigated hypothetical shows the urgent action
+  leaving `actions_removed` and `action_counts["urgent"]` dropping.
+
+#### Verification Commands
+```bash
+uv run pytest tests/engines/test_whatif.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No endpoint or request model (M045), no UI (M051), no persistence or
+scenario storage, no live model/key handling (M042, 🔒), no frontend
+(M046–M050), no new agronomic thresholds (the knobs change inputs only
+— every rule stays in M032/M033/M034/M039), no advisory text (M041).
 
 #### Verification & Notes (added on completion)
 
