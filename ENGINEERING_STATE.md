@@ -81,6 +81,7 @@ Last test result: "pytest = 656 passed (advisory 17, llm 24, decision 21, diseas
 | M037 | `e15b3f8` |
 | M039 | `35bd565` |
 | M040 | `f38f448` |
+| M041 | `ac6ddda` |
 
 ## Notes / findings
 
