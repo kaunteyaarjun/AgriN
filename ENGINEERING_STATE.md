@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "(none in progress) — M031 (P0 normalization layer) is done and has unblocked the analysis engines: M032 and M034 are ready to start, M033 needs M032 as well. M030 (soil live) is still P2 and the remaining P1s stay dependency-blocked (see Next milestone)."
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031"]
-Current implementation status: "M031 done: data normalization layer (units/timeframes → Farm State) — src/services/normalize.py, a read-side PURE function layer (no DB, no I/O) that turns the raw farm_signal_caches.signals document into canonical pydantic models. normalize_signals(signals, now=, refreshed_at=) → NormalizedSignals(weather|satellite|soil|refreshed_at|refreshed_age_seconds|unknown_families|malformed_families); normalize_farm_state(FarmStateView) → NormalizedFarmState(view, signals) for the engines. Units: JSONB numbers only (bool/str/list/NaN/inf rejected before bounds), physical-range plausibility → None (temp −90..60 °C, humidity/cloud/soil-moisture 0..100, pH 0..14, NDVI −1..1, rainfall/wind/N ≥ 0), condition folded to the canonical 5-value vocabulary. Timeframes: SOURCE_PROFILES maps known source → rainfall_window_hours (demo 24, open-meteo 1 → rainfall_mm_per_day = mm×24/window) and ndvi_support_days (demo 1, MODIS 16); unknown source converts nothing. Provenance: per-family source/observed_at/age_seconds (naive timestamps assumed UTC, negative age allowed) — staleness thresholds deliberately left to M032+ per M019. Cache stays raw (no write-time change, no migration, no API change)."
+Current milestone: "(none in progress) — M032 (crop health engine) is done. M033 (risk engine, needs M031+M032) and M034 (recommendation engine, needs M031) are now both unblocked; roadmap order puts M033 next. Remaining P1s stay dependency-blocked and M030 stays P2 (see Next milestone)."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032"]
+Current implementation status: "M032 done: crop health analysis engine (rule-based) — new pure-computation package src/engines/ (peer of src/services; M033/M034/M039 to follow), src/engines/health.py. assess_plot_health(plot, signals, now=) and assess_farm_health(NormalizedFarmState, now=) emit ALWAYS-SEVEN factors in fixed order (planting, ndvi, soil_moisture, soil_ph, nitrogen, air_temperature, rainfall), each with status ok|attention|stress|unknown, the measured value and a deterministic one-line evidence string (NDVI at 2 dp, everything else 1 dp). Aggregation: planting GATES the verdict (no crop state or future planted_on → unknown), then worst signal factor decides healthy|watch|stressed, no evaluated signal factor → unknown — missing data can never masquerade as health. Thresholds are demo agronomy in CropProfile: CROP_PROFILES for maize/wheat/beans (case-insensitive keys, free-text crop from M018) + DEFAULT_CROP_PROFILE; crop-agnostic temperature [10,35]/[5,40] C and rainfall 30/60 mm/day. OWNS THE STALESS POLICY deferred by M019/M031: STALE_AFTER_SECONDS weather 24 h, soil 24 h, satellite 90 d (90 d = M027's measured 47-day NASA latency + 16-day composite); a stale family's factors become unknown and the family is listed in FarmHealth.stale_families (missing observed_at = unknown but NOT stale). No DB, no endpoint, no persistence — takes the already-normalized state."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -18,10 +18,10 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks:
-  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M036/M037 (disease provider+assessment), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. Their P0 predecessors M032–M046 are still unstarted (M031 now done) — spec them just-in-time per Section 8 before any of these can move."
-Next milestone: "Roadmap order: M032 Crop health analysis engine (P0, its only dependency M031 is met). M034 Crop recommendation engine (P0) is unblocked at the same time; M033 Farm risk engine needs M031 + M032, so it follows M032. M030 (soil live, P2) and the blocked P1s (M038/M051/M052/M053) remain outside the demo path. Engines are not lock-restricted, but they are architecturally significant — spec M032 just-in-time (Section 8) before coding."
-Last verification: "M031 gate PASSED with live dev DB (65432): ruff format OK (109 files), ruff check OK, mypy OK (106 files), pytest 467 passed / 0 skipped (64 new normalization tests); bandit -r -ll on src + workers = 0; pip-audit clean (no new deps). No live check by design — the layer has no network or DB code path."
-Last test result: "pytest = 467 passed (normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M036/M037 (disease provider+assessment), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. Their P0 predecessors M033–M046 are still unstarted (M031 + M032 now done) — spec them just-in-time per Section 8 before any of these can move."
+Next milestone: "Roadmap order: M033 Farm risk engine (P0; M031 + M032 both met). M034 Crop recommendation engine (P0; M031 met) is unblocked at the same time and can be taken instead — it does not depend on M033/M032. After the engines: M035 image upload → M036 disease provider → M037 disease assessment (needs M032), then the 🔒 gates (M039 decision engine, M042 LLM live, M046 frontend). M030 (soil live, P2) and the blocked P1s remain outside the demo path. Engines are not lock-restricted but are architecturally significant — spec just-in-time (Section 8) before coding."
+Last verification: "M032 gate PASSED with live dev DB (65432): ruff format OK (113 files), ruff check OK, mypy OK (110 files), pytest 505 passed / 0 skipped (38 new engine tests); bandit -r -ll on src + workers = 0; pip-audit clean (no new deps). No live check by design — the engine is a pure function over M019/M031 data (no network, no DB, injectable now)."
+Last test result: "pytest = 505 passed (engines-health 38, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -247,3 +247,34 @@ Last test result: "pytest = 467 passed (normalize 64, weather-live 57, satellite
   *threshold* at which a signal is "stale" is a per-engine decision
   (M019's standing rule). If two engines disagree about freshness,
   that is a feature of their domains, not a bug to centralize.
+- 2026-09-29 (M032): **the staleness thresholds now exist** (they were
+  deliberately deferred twice) — `STALE_AFTER_SECONDS` in
+  `src/engines/health.py`: weather 24 h, soil 24 h, **satellite 90 d**.
+  The 90 is derived from measurement (M027: 47-day NASA latency at
+  Nairobi + 16-day composite), not taste; a "clean" 16/30-day number
+  would mark every real MODIS reading stale. Any later engine reading
+  signals (M033/M034/M047) must reuse these constants rather than
+  inventing its own notion of fresh.
+- 2026-09-29 (M032): **"healthy" must be gated, not defaulted.** The
+  first draft aggregated the worst *non-unknown* factor, which made a
+  plot with a registered crop and **zero signals** come out `healthy`
+  (only `planting` was `ok`). Caught while writing the test, fixed
+  before the spec was closed: planting gates the verdict, and no
+  evaluated signal factor → `unknown`. Rule of thumb for every future
+  engine: *absence of evidence is never evidence of health.*
+- 2026-09-29 (M032): new package boundary — **`src/services` does I/O,
+  `src/engines/` does rules.** Engines take assembled state
+  (`NormalizedFarmState`) and return pydantic DTOs; no session, no
+  provider, no persistence. M033/M034/M039 should land in
+  `src/engines/`, and an endpoint (M047/M048) will be the thing that
+  calls them.
+- 2026-09-29 (M032): **two unknowns, two messages.** `no rainfall
+  reading` (provider omitted the field) vs `rainfall window unknown
+  for this source` (M031's profile lookup found no window) look the
+  same to a level (`unknown`) but mean different fixes; keep the
+  detail strings distinct. Same for `no observation time` vs
+  `stale (…)` — the former is not reported as a stale family.
+- 2026-09-29 (M032): engine tests feed **raw docs through M031's
+  normalizer**, so they cover the M031→M032 seam instead of
+  hand-building `NormalizedSignals`. Copy that pattern for M033/M034 —
+  it fails loudly if either side's contract drifts.

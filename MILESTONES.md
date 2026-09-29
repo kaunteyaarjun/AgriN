@@ -51,7 +51,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **Normalization** | | | | |
 | M031 | Data normalization layer (units/timeframes → Farm State) | P0 | M023, M026, M029 | done |
 | **Analysis engines** | | | | |
-| M032 | Crop health analysis engine (rule-based) | P0 | M031 | not-started |
+| M032 | Crop health analysis engine (rule-based) | P0 | M031 | done |
 | M033 | Farm risk engine (deterministic scoring) | P0 | M031, M032 | not-started |
 | M034 | Crop recommendation engine (rule-based) | P0 | M031 | not-started |
 | **Disease diagnosis** | | | | |
@@ -4761,3 +4761,245 @@ change, no API endpoint, no ingestion of a fourth family.
   `_soil_family`) plus a shared `_base` (source, observed_at, age);
   the spec showed the results, not the internals. No public surface
   differs from the contract above.
+
+### M032 — Crop health analysis engine (rule-based)
+
+**Priority:** P0 **Depends On:** M031
+**Status:** done
+
+#### Objective
+A pure, deterministic rule engine that turns a `NormalizedFarmState`
+(M031) into an explainable per-plot crop health assessment: a
+`HealthFactor` list carrying measured value, threshold and evidence,
+aggregated to a plot `level` (`healthy` / `watch` / `stressed` /
+`unknown`) and rolled up to a farm level. It also owns the
+**staleness policy** M019 and M031 deliberately deferred.
+
+#### Why This Milestone Exists
+M031 made the signals canonical but decision-free; M033 (risk), M034
+(recommendations), M037 (disease context) and M048 (dashboard) all
+need one shared, auditable answer to "how is this plot doing?" — and
+it must be a *rules* engine (deterministic, testable, no model, no
+network) so the demo's advice can always be explained line by line.
+
+#### Files Expected to Be Created
+- `src/engines/__init__.py`
+- `src/engines/health.py`
+- `tests/engines/__init__.py`
+- `tests/engines/test_health.py`
+
+#### Files Expected to Be Modified
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None. Pure computation over data M019/M031 already expose — no table,
+no endpoint, no worker (M048 renders it, M039 aggregates it).
+
+#### External Dependencies
+None (pydantic + stdlib).
+
+#### Service Contract
+```python
+# src/engines/health.py
+HEALTH_LEVELS: tuple[str, ...] = ("healthy", "watch", "stressed", "unknown")
+FACTOR_STATUSES: tuple[str, ...] = ("ok", "attention", "stress", "unknown")
+
+STALE_AFTER_SECONDS: dict[str, int] = {   # THE staleness policy (M019 deferred it)
+    "weather": 86_400,                    # 24 h - in-situ / current-hour feed
+    "soil": 86_400,                       # 24 h - in-situ probe
+    "satellite": 7_776_000,               # 90 d - 16-day composite plus the
+}                                         # 47-day NASA latency M027 measured
+
+@dataclass(frozen=True)
+class CropProfile:                        # per-crop thresholds (demo agronomy)
+    ndvi_watch: float = 0.40              # below -> attention
+    ndvi_stress: float = 0.25             # below -> stress
+    moisture_attention_min: float = 30.0  # % plant-available water
+    moisture_stress_min: float = 20.0
+    moisture_attention_max: float = 70.0  # waterlogging
+    moisture_stress_max: float = 85.0
+    ph_attention_min: float = 5.8
+    ph_stress_min: float = 5.0
+    ph_attention_max: float = 7.2
+    ph_stress_max: float = 7.8
+    nitrogen_attention_min: float = 40.0  # kg/ha available N
+    nitrogen_stress_min: float = 20.0
+    # crop-agnostic constants, never overridden in M032:
+    #   temperature: attention outside [10, 35] C, stress outside [5, 40] C
+    #   rainfall:    attention > 30 mm/day,       stress > 60 mm/day
+
+CROP_PROFILES: dict[str, CropProfile]     # key = crop.lower()
+    # "maize": moisture 35/25, nitrogen 50/20, ph 5.8-7.2
+    # "wheat": moisture 30/20, nitrogen 40/20, ph 6.0-7.0
+    # "beans": moisture 35/25, nitrogen 30/10 (legume N fixation), ph 6.0-7.5
+DEFAULT_CROP_PROFILE: CropProfile         # unknown/absent crop -> this
+
+class HealthFactor(BaseModel):
+    name: str                 # planting | ndvi | soil_moisture | soil_ph |
+                              # nitrogen | air_temperature | rainfall
+    status: str               # FACTOR_STATUSES
+    measured: float | None    # normalized value the rule saw (None = unusable)
+    detail: str               # "soil moisture 18.0% < 25.0% (maize)"
+
+class PlotHealth(BaseModel):
+    plot_id: uuid.UUID
+    name: str
+    crop: str | None
+    growth_stage: str | None
+    days_since_planted: int | None
+    level: str                # HEALTH_LEVELS
+    factors: list[HealthFactor]   # always all 7, fixed order
+    factors_evaluated: int     # status != unknown
+    factor_count: int          # == 7
+    computed_at: datetime
+
+class FarmHealth(BaseModel):
+    farm_id: uuid.UUID
+    level: str                # worst plot level; "unknown" with no plots
+    plots: list[PlotHealth]
+    plot_count: int
+    stale_families: list[str] # families past STALE_AFTER_SECONDS, sorted
+    computed_at: datetime
+
+def assess_plot_health(plot: PlotStateView, signals: NormalizedSignals, *,
+                       now: datetime | None = None) -> PlotHealth
+
+def assess_farm_health(state: NormalizedFarmState, *,
+                       now: datetime | None = None) -> FarmHealth
+```
+
+#### Decisions
+- **New package `src/engines/`** (peer of `src/providers`,
+  `src/ingestion`, `src/services`): pure deterministic computation,
+  zero I/O — `src/services/` stays the I/O layer. M033/M034/M039 land
+  here too.
+- **Seven factors, fixed order:** `planting`, `ndvi`, `soil_moisture`,
+  `soil_ph`, `nitrogen`, `air_temperature`, `rainfall`. Every factor is
+  always emitted (an unusable one is `unknown`, never omitted) so the
+  dashboard shows what is *missing* as well as what is wrong. Wind and
+  humidity are deliberately excluded: their damage is event-based and
+  cannot be ruled on from a daily aggregate.
+- **Aggregation gates on planting, then takes the worst signal
+  factor**: no crop state or a future planting date → `unknown`
+  (nothing is growing, so there is no health to report); otherwise
+  `stress` → `stressed`, `attention` → `watch`, all `ok` → `healthy`,
+  and no evaluated signal factor → `unknown`. Planting alone never
+  proves health: a registered plot whose three signal families are all
+  missing is `unknown`, not `healthy`. Explainability beats averaging —
+  every level traces back to exactly one factor detail.
+- **Staleness policy lives here (finally decided):** a family older
+  than `STALE_AFTER_SECONDS` makes its factors `unknown` (we do not
+  judge health from data we have declared untrustworthy) and is
+  reported in `stale_families`. The satellite threshold is 90 days,
+  not 16 — M027 measured 47-day NASA latency at Nairobi, so a 16/30-day
+  threshold would declare every real reading stale.
+- **Signals are farm-level, plots are plot-level** — weather, soil and
+  NDVI all come from the farm centroid (M023/M026/M029). Per-plot
+  variation therefore comes *only* from crop profile + planting date;
+  two plots with the same crop on one farm score identically.
+  Documented limitation, not hidden: downsampling a scene to plots
+  needs per-plot geometry + raster access (no milestone asks for it).
+- **Crop profiles are keyed case-insensitively** (`"Maize"` →
+  `maize`, as M018/M020 tests write crops) and fall back to
+  `DEFAULT_CROP_PROFILE`, because `crop` is free text (M018) with no
+  crop registry. Thresholds are *demo agronomy*, documented as such —
+  constants, not expertise.
+- **Stages and future plantings:** `growth_stage` /
+  `days_since_planted` are reported for context but do not move
+  thresholds in M032 (stage-aware curves are a later refinement). A
+  plot with no crop state, or planted in the future, assesses to
+  `unknown` with a `planting` factor explaining why — nothing is
+  growing yet.
+- **Rainfall is judged on `rainfall_mm_per_day`** (M031's profile
+  conversion). Unknown source → conversion is `None` → factor is
+  `unknown` with "rainfall window unknown": the honest consequence of
+  M031's never-guess rule.
+- **Determinism:** same input + same `now` → identical output; every
+  `detail` string uses fixed precision. No clock reads beyond the
+  injectable `now`.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/engines/__init__.py` package doc + exports; `health.py`
+   (constants, `CropProfile`, DTOs, factor rules, aggregation).
+3. `tests/engines/` (pure unit, no DB — no `_db` fixture needed).
+4. Gate, docs, state, two commits (implementation + hash record).
+
+#### Testing Criteria
+`tests/engines/test_health.py` (pure unit, DB-free):
+- [x] fresh signals + "Maize" → `healthy`, all 7 factors `ok`,
+  `factors_evaluated == 7`, case-insensitive profile lookup.
+- [x] ndvi 0.35 → `watch` (`ndvi` factor `attention`, detail names the
+  threshold); ndvi 0.20 → `stressed`.
+- [x] aggregation: worst factor wins (stress beats attention); planting
+  gates the verdict (no crop state / future date → `unknown`);
+  crop registered but every signal family absent → `unknown`; empty
+  plot list → farm `unknown`.
+- [x] staleness: satellite age 91 d → `ndvi` unknown + `stale_families`
+  `["satellite"]`; weather age 25 h → `air_temperature`/`rainfall`
+  unknown; missing `observed_at` (age `None`) → unknown.
+- [x] unusable data → unknown: family absent, `rainfall_mm_per_day` None
+  (unknown source), non-numeric/None values.
+- [x] bounds per rule: moisture 18 → stress, 28 → attention, 75 →
+  waterlog attention, 90 → stress; ph 5.6 → attention, 4.9 → stress;
+  nitrogen 35 → attention, 15 → stress; temperature 42 → stress, 8 →
+  attention; rainfall 45 mm/day → attention, 70 → stress.
+- [x] crop profiles: maize/wheat/beans differ on the same signals; unknown
+  crop ("Sorghum") uses `DEFAULT_CROP_PROFILE`.
+- [x] `planting` factor: no crop state → `unknown` + detail; `planted_on`
+  in the future → `unknown` + detail; both never raise.
+- [x] determinism: same `NormalizedFarmState` + `now` twice → equal models.
+- [x] rollup: farm level == worst plot level; `stale_families` sorted.
+
+#### Verification Commands
+```bash
+uv run pytest tests/engines -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No API endpoint (M047/M048), no persistence of results (M039/M041
+call it in-process), no risk scoring (M033), no recommendations
+(M034), no disease logic (M036/M037), no DB access or queries (it
+takes an already-assembled `NormalizedFarmState`), no per-plot
+satellite/soil downscaling, no machine learning, no stage-dependent
+thresholds.
+
+#### Verification & Notes (added on completion)
+- Gate PASSED (2026-09-29, live dev DB on 65432): `ruff format --check`
+  OK (113 files), `ruff check` OK, `mypy` OK (110 source files),
+  `pytest` **505 passed / 0 skipped** (467 prior + 38 new in
+  `tests/engines/test_health.py`); `bandit -r -ll src workers` = 0
+  findings; `pip-audit` = no known vulnerabilities (no dependency
+  added).
+- **No live check by design:** the engine is a pure function over
+  data M019/M031 already give it — no network, no DB, no clock beyond
+  the injectable `now`.
+- **Deviation (spec fixed during implementation, rule 6):** the draft
+  aggregation ("worst non-unknown factor") would have called a plot
+  with *no signals at all* `healthy` because `planting` was `ok`.
+  Changed to *planting gates the verdict, then the worst signal factor
+  decides*, so missing data can never masquerade as health; the
+  Decisions section and testing criteria were rewritten to match
+  before this milestone was closed.
+- **Deviation:** NDVI evidence is formatted at 2 dp (`_fmt_ndvi`) —
+  one decimal rendered `0.2 < 0.2`, which is not evidence.
+- **Finding:** "no reading" and "window unknown" are different
+  unknowns and now say so (`no rainfall reading` vs `rainfall window
+  unknown for this source`); collapsing them would hide whether M031's
+  profile lookup failed or the provider simply omitted the field.
+- **Finding:** per-plot scores only differ by crop profile and
+  planting date — every signal comes from the farm centroid, so two
+  "Maize" plots on one farm are always identical. Recorded as a
+  limitation of the whole provider/ingestion chain, not a bug here.
+- **Finding:** the 90-day satellite staleness threshold is *derived
+  from a measurement* (M027: 47-day NASA latency + 16-day composite),
+  and `test_fresh_satellite_threshold_is_not_16_days` pins the
+  boundary (90 days − 1 s stays fresh) so nobody tightens it back to
+  16 days and turns every real reading into `unknown`.
+- New package `src/engines/` (with `tests/engines/`): pure
+  computation, peer of `src/services`. M033/M034/M039 are expected to
+  land here rather than in `src/services`.
