@@ -57,7 +57,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **Disease diagnosis** | | | | |
 | M035 | Image upload endpoint (MIME/size/decompression limits) | P0 | M016 | done |
 | M036 | Disease provider interface + demo provider | P0 | M021, M035 | done |
-| M037 | Context-aware disease assessment (confidence + farm-state blend) | P0 | M036, M019, M032 | not-started |
+| M037 | Context-aware disease assessment (confidence + farm-state blend) | P0 | M036, M019, M032 | done |
 | M038 | Disease provider live model integration | P1/P2 | M036 | not-started |
 | **Decision engine & AI advisory** | | | | |
 | M039 | Structured agricultural decision engine (aggregation) | P0 🔒 | M033, M034, M037 | not-started |
@@ -5752,6 +5752,174 @@ No live model or HTTP call (M038); no assessment, thresholds,
 farm-state blend or "healthy" verdict (M037); no endpoint, DB row or
 file read (M049's flow consumes M037 first); no image decoding,
 resizing or re-encoding; no bounding boxes; no LLM involvement (M040).
+
+### M037 — Context-aware disease assessment (confidence + farm-state blend)
+
+**Priority:** P0 **Depends On:** M036, M019, M032
+**Status:** done
+
+#### Objective
+A pure engine — `src/engines/disease.py`, peer of M032/M033/M034 —
+that turns one plot's `DiseaseDetection` (M036) plus the farm's
+digital twin (`NormalizedFarmState`, M019/M031) and health rollup
+(`FarmHealth`, M032) into a `DiseaseAssessment`: an ordered candidate
+list with **raw → effective confidence** and an evidence trail, and a
+plot verdict (`not_detected` / `uncertain` / `suspected` / `detected`).
+
+#### Why This Milestone Exists
+A model's raw score alone is not a diagnosis: the same 0.85 means
+something different on a maize plot for a wheat-only disease, and
+something different again when the canopy reads healthy. M039 needs a
+structured disease input alongside health/risk/recommendations, M049
+needs verdict + reasons to render, and M041 needs evidence strings to
+phrase — one blend, one vocabulary, decided here.
+
+#### Files Expected to Be Created
+- `src/engines/disease.py`
+- `tests/engines/test_disease.py`
+
+#### Files Expected to Be Modified
+- `src/engines/__init__.py` (exports)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None. No table, no endpoint, no persistence — results become rows only
+when a milestone that stores assessments asks for them.
+
+#### API Changes
+None. Exposure (endpoint) lands with the dashboard milestone that
+needs it — same order M032–M034 used (engine first).
+
+#### External Dependencies
+None (pydantic + stdlib + existing engine/provider modules).
+
+#### Design Decisions
+- **Shape matches the trio:** `assess_disease(state, health, detection,
+  plot_id, *, image_id=None, now=None)` → `DiseaseAssessment`. M039
+  calls health + risk + recommendations + disease with the same
+  `(state, health)` pair; `ValueError` on farm mismatch or unknown
+  plot (the established caller-bug guards).
+- **Context may only discount, never inflate.** The model saw the
+  pixels; farm context can disagree with it but must not *raise* a
+  weak score — a blend that boosts would let farm state launder a
+  low-confidence guess into `detected`. Two multipliers, applied in
+  sequence, `effective = round(min(1, raw × factors), 3)`:
+  - **crop affinity ×0.6** — plot's registered crop not in the
+    candidate's `DISEASE_CATALOG` crops (catalog is the expert
+    knowledge M036 defined; unknown/unregistered crop gets **no**
+    discount, only an "affinity unchecked" reason — unregistered
+    plots are already flagged by M032/M034 and must not be punished
+    twice for the same gap);
+  - **healthy canopy ×0.9** — the plot's own M032 level is
+    `healthy`; `stressed` / `watch` / `unknown` add no discount (a
+    stressed canopy is *consistent* with disease, but consistency is
+    not evidence, so it does not boost either).
+- **Two thresholds, one ordering.** Candidates sort by effective
+  confidence desc, then code (deterministic, like the trio). Verdict
+  from the best: empty → `not_detected`; ≥ 0.70 → `detected`;
+  ≥ 0.50 → `suspected`; else `uncertain`. Thresholds are named
+  module constants (exported), each with a documented rationale
+  (0.70 = model and context jointly worth acting on; 0.50 = report to
+  a human, do not act automatically).
+- **Every discount and threshold leaves an evidence string.**
+  `DiseaseCandidateAssessment.reasons` reads like `HealthFactor.detail`
+  (M032 precedent): raw score, the crop line, the canopy line, the
+  effective score — M041 phrases these verbatim instead of
+  re-deriving them.
+- **`DiseaseAssessment` carries context for display:** farm_id,
+  plot_id/plot_name/crop, the plot's `health_level`, `image_id`
+  (optional passthrough — M049 ties the verdict to the photo),
+  `source` (which provider said it), `detected_at` (from M036) and
+  `computed_at` (injectable `now`).
+- **Signal staleness is deliberately *not* part of the blend.** A
+  photo diagnosis does not depend on weather/satellite freshness;
+  stale signals already surface in M032/M033 and must not double-count
+  here.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/engines/disease.py`: models, constants, `assess_disease`.
+3. `src/engines/__init__.py`: exports.
+4. `tests/engines/test_disease.py`.
+5. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+`tests/engines/test_disease.py` (pure unit — fixtures build
+`NormalizedFarmState`/`FarmHealth` like the trio's tests):
+- [x] empty detections → `not_detected`, no candidates, `image_id`
+  passthrough (None default and explicit).
+- [x] no-discount path: matching crop + `stressed` canopy →
+  `detected`, effective == raw, reasons include crop match and no
+  multiplier lines.
+- [x] crop mismatch ×0.6: raw 0.90 on a maize plot for a
+  wheat/beans-only disease → 0.54 → `suspected`, reason names both
+  crops and the factor.
+- [x] healthy canopy ×0.9: raw 0.75, matching crop, healthy → 0.675 →
+  `suspected`.
+- [x] combined discounts: 0.90 mismatch + healthy → 0.486 →
+  `uncertain`.
+- [x] unregistered crop: no discount, reason says affinity unchecked.
+- [x] verdict boundaries: effective exactly 0.70 → `detected`;
+  exactly 0.50 → `suspected`; 0.499 → `uncertain`.
+- [x] ordering: two candidates sorted by effective desc, code asc on
+  ties; labels come from `DISEASE_CATALOG`.
+- [x] guards: unknown `plot_id` → `ValueError`; `state`/`health`
+  farm mismatch → `ValueError`.
+- [x] fields: plot identity, `health_level`, `source`, `detected_at`,
+  `computed_at == now`.
+
+#### Verification Commands
+```bash
+uv run pytest tests/engines/test_disease.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No endpoint, DB row or file read (the photo path is M035's, exposure
+is M049's); no farm-level disease rollup (M039 aggregates); no
+recommendations or actions (M034 owns those — diagnosis only); no
+"healthy" label when nothing was found (empty → `not_detected`);
+no live model (M038); no thresholds other than the two documented
+ones; no signal-staleness multiplier; no LLM (M040/M041).
+
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED — 594 passed / 0 skipped (126
+  files formatted, ruff clean, mypy clean on 123 sources). New
+  coverage: `tests/engines/test_disease.py` = 18 tests (engine total
+  now 105 across four engines). Bandit 0, pip-audit clean (no new
+  deps).
+- **Files:** created `src/engines/disease.py`,
+  `tests/engines/test_disease.py`; modified `src/engines/__init__.py`
+  (8 exports + docstring "four engines"). No DB, no endpoint.
+- **Findings:**
+  - **"Context may only discount" proved testable:** an explicit
+    invariant test (`context_never_inflates_confidence`) sweeps raw ×
+    crop × canopy and asserts `effective ≤ raw` — the one property
+    that keeps the blend from becoming a confidence laundromat.
+  - Catalog labels are title-case (`Rust`), crop names lowercase
+    (`maize`) — the first test failure was an expectation mismatch
+    between them; reasons read `crop mismatch: Rust typically affects
+    beans, wheat, plot grows maize (x0.6)`. Display casing lives in
+    the catalog (M036), engines reuse it verbatim.
+  - Ordering test initially gave a mismatched candidate the highest
+    raw (0.95 × 0.6 = 0.57 < 0.80 matches) — sorted output disagreed
+    with the naive expectation. Corrected to cover *both* sort keys:
+    effective-desc across discount classes, code-asc on the 0.80 tie.
+  - Stressed-canopy fixtures reuse M032's own thresholds (soil
+    moisture 10 % < maize stress 25 %) — no parallel universe of test
+    values; if M032's profiles change, these tests follow.
+  - Verdict boundaries verified *exactly* at 0.70/0.50 (rounding to
+    3 decimals before comparison keeps floats honest).
+- **M039 note:** the engine exposes `DiseaseAssessment` per plot/image
+  only — aggregation across plots is deliberately M039's job, matching
+  how M033/M034 consume M032 rather than re-deriving it.
+- **Not built (per spec):** no endpoint/DB/file read, no farm rollup,
+  no actions, no live model, no extra thresholds, no staleness
+  multiplier, no LLM.
 
 #### Verification & Notes (added on completion)
 
