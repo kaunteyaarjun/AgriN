@@ -27,8 +27,9 @@ from src.providers.satellite import (
 
 # Concrete providers register themselves on import — one grep-able line
 # per provider (M021 rule: no auto-discovery/entry-point magic; each
-# demo import sorts directly after its family's contract import).
+# implementation import sorts directly after its family's contract import).
 from src.providers.satellite_demo import DemoSatelliteProvider  # noqa: F401  (registers on import)
+from src.providers.satellite_live import LiveSatelliteProvider  # noqa: F401  (registers on import)
 from src.providers.soil import SoilProvider, SoilReading, get_soil_provider
 from src.providers.soil_demo import DemoSoilProvider  # noqa: F401  (registers on import)
 from src.providers.weather import WeatherProvider, WeatherReading, get_weather_provider
@@ -41,6 +42,7 @@ __all__ = [
     "DemoSatelliteProvider",
     "DemoSoilProvider",
     "DemoWeatherProvider",
+    "LiveSatelliteProvider",
     "LiveWeatherProvider",
     "ProviderError",
     "ProviderNotRegistered",

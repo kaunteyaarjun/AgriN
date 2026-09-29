@@ -4,22 +4,24 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M027 — Satellite live provider (P1)"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M028", "M029"]
-Current implementation status: "M024 done: weather live provider (Open-Meteo) — FIRST network-backed provider. src/providers/weather_live.py LiveWeatherProvider registered (\"weather\",\"live\"), owns one pooled httpx.AsyncClient (10 s timeout, injectable for tests), aclose() closes it; GET /v1/forecast keyless with current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,timezone=auto. Mapping: precipitation (current-hour mm) → rainfall_mm_24h slot (documented approximation, M031 owns semantics); WMO code → 5-value condition table (snow/unknown → cloudy, absent/null → None); non-numeric → None. Taxonomy in anger: timeout/transport/5xx/429 → ProviderUnavailable, other 4xx/bad JSON/missing current → ProviderResponseInvalid, no raw exception escapes. httpx 0.28.1 promoted dev → runtime dep (D8, same pin). Settings default stays demo — nothing downstream changes behavior."
+Current milestone: "(none in progress) — M024 and M027, the only two unblocked P1 milestones, are both done; the remaining P1s are dependency-blocked (see Next milestone). Next milestone awaits a human pick: M030 (soil live, P2) or the P0 chain starting at M031."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029"]
+Current implementation status: "M027 done: satellite live provider (NASA MODIS NDVI) — src/providers/satellite_live.py LiveSatelliteProvider registered (\"satellite\",\"live\") against the keyless ORNL DAAC TESViS REST service (MOD13Q1, Terra 16-day 250 m). TWO-REQUEST protocol: GET /MOD13Q1/dates (global composite calendar) → newest calendar_date ≤ today, then GET /MOD13Q1/subset for that single date with a 9×9 window (km=1, 231.66 m cell). Mapping: ndvi = mean of QA-valid pixels (pixel_reliability 0/1, raw ∈ [-2000,10000]) × 0.0001 @4dp, none usable → None; cloud_cover_pct = share of the window QA-flagged cloudy (3) @1dp (documented approximation — MOD13Q1 has no cloud band); captured_at = composite day 00:00 UTC; source = ornl-daac-modis-mod13q1. Taxonomy: timeout/transport/5xx/429 → ProviderUnavailable; other 2xx-adjacent 4xx (incl. upstream plain-text 400/404, trimmed to 200 chars), empty subset (ocean), missing bands/bad types → ProviderResponseInvalid. Same client-ownership shape as M024 (pooled httpx.AsyncClient, 20 s timeout, injectable, aclose()). No new dependencies. Settings default stays demo."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
-Known performance issues: []
+Known performance issues:
+  - "Live satellite ingest costs ~5.5 s/farm (2 HTTP calls; upstream ~3 s each) when satellite_provider=live; demo default unaffected. Live weather ~1 call. Sequential batch cost documented for M056."
 Known resource/memory issues:
   - "Residual (documented, not reproducible locally): asyncio.wait_for cancelling /ready's check mid real-socket cleanup; SQLAlchemy pool handles greenlet cancellation — re-measure in M056. Refused-connection path asserted clean (checkedout()==0)."
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
-Blocked tasks: []
-Next milestone: "M027 — Satellite live provider (P1, depends M026 — the only other actionable P1; M030 is P2, M038/M051/M052/M053 are P1 but blocked on P0 specs not yet written). Needs a real NDVI-capable source: check keyless/free options (NASA CMR / Sentinel OData) and write the spec JUST-IN-TIME (Section 8) before implementing; M024's shape = client ownership + taxonomy + MockTransport tests + live check."
-Last verification: "M024 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK (102 files), pytest 363 passed / 0 skipped (57 new weather-live tests); bandit -r -ll on src/providers + workers = 0; pip-audit clean. Live (live_m024.py, real HTTP): 4/4 PASS — Nairobi 22.4C/48%/0.0mm/15.1km/h/partly_cloudy, Mombasa 26.1C/81%/0.0mm/16.9km/h/clear (source open-meteo-v1); latitude=999 → upstream 400 → ProviderResponseInvalid; closed port 127.0.0.1:9 → ProviderUnavailable."
-Last test result: "pytest = 363 passed (weather-live 57, soil-ingestion 11, soil 15, satellite-ingestion 11, satellite 14, weather-ingestion 10, weather-demo 14, providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+Blocked tasks:
+  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M036/M037 (disease provider+assessment), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. None of their P0 predecessors (M031–M046) are started — spec them just-in-time per Section 8 before any of these can move."
+Next milestone: "Human pick required. Options in roadmap order: (a) M030 — Soil live provider (P2, depends M029 met) — completes the live-provider trio; needs a keyless soil source researched the same way M027 did; (b) the P0 demo chain: M031 normalization → M032/M033/M034 engines → M035+ disease → M039+ advisory. No unblocked P1 remains (M024 + M027 done). Prior human-confirmed ordering (2026-09-28): P0s of the provider phase first, then P1s M024/M027, then P2 M030."
+Last verification: "M027 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK (104 files), pytest 403 passed / 0 skipped (40 new satellite-live tests); bandit -r -ll on src/providers + workers = 0; pip-audit clean (no new deps). Live (live_m027.py, real HTTP): 8/8 PASS — Nairobi ndvi 0.2731/0.0% cloud, Mombasa 0.3508/0.0%, Amazon rainforest 0.8581 (≥0.5 asserted), Oman desert 0.109 (≤0.3 asserted), Sydney 0.3947/66.7% cloud (all captured_at 2026-08-13); ocean (0,-140) → ProviderResponseInvalid; real upstream 404 → ProviderResponseInvalid with trimmed upstream text; closed port 127.0.0.1:9 → ProviderUnavailable."
+Last test result: "pytest = 403 passed (satellite-live 40, weather-live 57, soil-ingestion 11, soil 15, satellite-ingestion 11, satellite 14, weather-ingestion 10, weather-demo 14, providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -185,3 +187,35 @@ Last test result: "pytest = 363 passed (weather-live 57, soil-ingestion 11, soil
   authorized path (D4) is to start it and `docker compose up -d db`
   (port 65432) before any gate run — DB-touching tests skip without
   it, and a "green" run with skips is NOT a passing gate.
+- 2026-09-29 (M027): **keyless-source research is now a repeatable
+  step.** Before spec'ing any live provider, screen sources on three
+  gates in order: (1) can it be used *without credentials we cannot
+  mint autonomously* (no account, no key — `Settings` has no key
+  fields), (2) does it return machine-readable data for a *point*
+  (not tiles/rasters that need a new heavy dep), (3) is it documented
+  and reachable from this host. Sentinel/Copernicus/Earth Engine
+  failed (1); Planetary Computer/Earth Search failed (2); ORNL DAAC
+  passed all three. Put the rejected alternatives + the reason in the
+  spec so the next reader doesn't redo the search.
+- 2026-09-29 (M027): **`/dates` is the global MODIS calendar**, not a
+  per-point availability list — a mid-ocean point returns the same
+  610 entries. Only `/subset` proves coverage (it answers `subset: []`
+  over water → `ProviderResponseInvalid`, deliberately not a null
+  reading: a fake observation is worse than a recorded provider
+  error).
+- 2026-09-29 (M027): **upstream cost scales with how much you ask
+  for** — 3 composites took 11.5 s, 1 composite ~3 s (hence
+  two requests beat one wide window), and NASA's latency at Nairobi
+  measured **47 days** (a fixed look-back window would eventually
+  request nothing and fail). Also: ORNL answers 4xx with **plain
+  text**, not JSON — surface it trimmed (`UPSTREAM_MESSAGE_MAX`), never
+  as a raw dump.
+- 2026-09-29 (M027): **date-sensitive provider tests must derive their
+  fixtures from `datetime.now(UTC).date()` at import time**
+  (`PAST_DAY`/`LATEST_DAY`/`FUTURE_DAY`), never hardcode calendar
+  strings — otherwise "newest composite ≤ today" tests rot the moment
+  the calendar advances.
+- 2026-09-29 (M024+M027): **P1 pass complete.** Both unblocked P1s
+  shipped; M038/M051/M052/M053 are blocked on unstarted P0 specs
+  (M036/M037, M043/M045/M046/M050) and M030 (soil live) is P2 — the
+  next milestone needs a human decision (see `Next milestone`).

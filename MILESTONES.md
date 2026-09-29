@@ -44,7 +44,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M024 | Weather live provider (Open-Meteo) | P1 | M023 | done |
 | M025 | Satellite/NDVI demo provider | P0 | M021 | done |
 | M026 | Satellite ingestion service + storage table | P0 | M025, M019 | done |
-| M027 | Satellite live provider | P1 | M026 | not-started |
+| M027 | Satellite live provider | P1 | M026 | done |
 | M028 | Soil demo provider | P0 | M021 | done |
 | M029 | Soil ingestion service + storage table | P0 | M028, M019 | done |
 | M030 | Soil live provider | P2 | M029 | not-started |
@@ -4328,3 +4328,233 @@ provider health dashboards.
   post-`pyproject.toml` resync must be `uv sync --extra dev`.
 - Roadmap row + spec status flipped to `done` only after the gate and
   the live check both passed (status discipline: `done` = committed).
+
+---
+
+### M027 — Satellite live provider (NASA MODIS NDVI)
+
+**Priority:** P1 **Depends On:** M026
+**Status:** done
+
+#### Objective
+`src/providers/satellite_live.py`: `LiveSatelliteProvider` registered
+under `("satellite", "live")`, fetching **real NDVI for a WGS84 point**
+from the ORNL DAAC MODIS/VIIRS subset REST web service
+(`MOD13Q1` — Terra 16-day, 250 m vegetation index) and mapping it to
+`SatelliteReading` (`ndvi`, `cloud_cover_pct`, `captured_at`).
+`get_satellite_provider(mode="live")` works; default settings stay
+`demo`.
+
+#### Why This Milestone Exists
+Second live provider — proves M024's shape (client ownership +
+failure taxonomy + MockTransport tests + live check) generalizes to a
+non-trivial upstream that needs a **two-request protocol** (composite
+calendar → subset). It is also the last P1 whose dependencies are met
+(M030 is P2; M038/M051/M052/M053 are P1 but blocked on P0 specs that
+do not exist yet).
+
+#### Files Expected to Be Created
+- `src/providers/satellite_live.py`
+- `tests/providers/test_satellite_live.py`
+
+#### Files Expected to Be Modified
+- `src/providers/__init__.py` (export + explicit registration import)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None.
+
+#### External Dependencies
+- **httpx==0.28.1** (runtime since M024/D8). No new package pins.
+- **ORNL DAAC TESViS REST web service** (free, **no API key, no
+  account**): `https://modis.ornl.gov/rst/api/v1/MOD13Q1/{dates,subset}`.
+  Reachability and response shape verified from this host before
+  spec'ing (Nairobi/Mombasa/London/Sydney all returned NDVI).
+
+#### Decisions
+- **Source selection (why MODIS, not Sentinel):** every Sentinel-2 /
+  Copernicus / Google Earth Engine path needs credentials we cannot
+  mint autonomously (`Settings` has no key fields, M002), and the
+  keyless STAC routes (Earth Search, Planetary Computer) would require
+  decoding Cloud Optimised GeoTIFFs — a new heavy runtime dep
+  (rasterio) and a real raster pipeline. The ORNL DAAC service is
+  keyless, JSON, point-based and covers the globe. **Trade-off logged:
+  250 m / 16-day instead of 10 m / 5-day** — M031 owns timeframe
+  normalization; `signals.satellite` already stores raw values.
+- **Two-request protocol:** (1) `GET /MOD13Q1/dates?latitude&longitude`
+  returns the composite calendar (entries `{modis_date, calendar_date}`;
+  it is the *global* MODIS calendar — same list for every point, so it
+  cannot by itself prove data exists); (2) `GET /MOD13Q1/subset` with
+  `startDate = endDate =` the newest `calendar_date <= today`, which
+  returns that one composite. Rationale: a single look-back window
+  costs O(composites) upstream (**11 s for 3 composites**, measured)
+  while one date costs ~3 s, and a fixed window can silently miss the
+  newest composite when NASA's latency grows (measured latency at
+  Nairobi: 47 days).
+- **Subset window:** `kmAboveBelow=1&kmLeftRight=1` → `ncols=nrows=9`
+  (231.66 m cell → ~2 km across). Small enough to be "the farm's
+  pixel", big enough for a meaningful cloud fraction.
+- **NDVI:** mean of the QA-valid pixels of that window —
+  `pixel_reliability ∈ {0 (good), 1 (marginal)}` and value in
+  `[-2000, 10000]` — × `0.0001` (MOD13Q1 scale factor), rounded to
+  4 dp. Snow/ice (2), cloudy (3), failed (4) and fill (-1) pixels are
+  excluded because **the product's own QA says they are not data**;
+  this is QA handling, not a cloud-masking *policy* (M031 owns
+  policy). No usable pixel → `ndvi=None`.
+- **`cloud_cover_pct` approximation:** `100 × count(pixel_reliability
+  == 3) / 81`, rounded to 1 dp. MOD13Q1 ships no cloud-cover band, so
+  the QA "cloudy" flag is the honest source; stored raw for M031 —
+  same documented-approximation pattern as M024's precipitation slot.
+- **`captured_at`** = the composite's `calendar_date` at 00:00 UTC
+  (overpass/composite day), distinct from `fetched_at` = now (UTC) —
+  M025's semantics.
+- `source` = `name` = `"ornl-daac-modis-mod13q1"`.
+- **Error mapping:** timeout/transport/5xx/429 →
+  `ProviderUnavailable`; every other non-2xx (including the upstream's
+  plain-text `400 No data available for time period …`) →
+  `ProviderResponseInvalid`; HTTP 200 with `subset` empty or missing
+  the NDVI/quality bands, non-list payloads or wrong value types →
+  `ProviderResponseInvalid`. Raw exceptions never escape (M021).
+- **Empty `subset` is `ProviderResponseInvalid`, not a null reading**
+  (ocean / outside coverage): a successful upstream answer that
+  carries no usable payload must not be written as a real observation;
+  M023 records `provider_error` and the batch continues.
+- **Client ownership:** identical to M024 — owns one pooled
+  `httpx.AsyncClient` (`TIMEOUT_S = 20.0`; measured `dates` ≈ 2.5–4.5 s,
+  single-date `subset` ≈ 3 s), injectable `client`/`base_url` for
+  MockTransport tests and the live refused-connection check;
+  `aclose()` closes it.
+- **Registration:** one comment-marked import line in
+  `src/providers/__init__.py`; settings default stays `demo`.
+- **Tests never hit the network:** `httpx.MockTransport` dispatching on
+  the request path (`/dates` vs `/subset`); real HTTP only in the live
+  check.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `satellite_live.py` (two-request protocol, QA filtering, taxonomy).
+3. Exports + registration line.
+4. Tests (`MockTransport`, offline).
+5. Gate, live check (real HTTP), docs, state, commits.
+
+#### Acceptance Criteria
+- [x] `get_satellite_provider(mode="live")` resolves the live provider
+      through the real `default_registry`; default settings still
+      resolve demo.
+- [x] Canned `/dates` + `/subset` payloads map to the expected
+      `SatelliteReading`: QA-valid NDVI mean × 0.0001 (4 dp),
+      cloud % from the QA flag (1 dp), `captured_at` from
+      `calendar_date`, `fetched_at` recent/UTC, correct `source`.
+- [x] QA filtering proven: fill/cloud/snow/failed pixels excluded from
+      the mean; cloudy pixels counted into `cloud_cover_pct`; no
+      usable pixel → `ndvi=None`.
+- [x] Timeout/connect errors/5xx/429 → `ProviderUnavailable`; 4xx/
+      empty `subset`/missing bands/bad types →
+      `ProviderResponseInvalid`; no raw exception escapes.
+- [x] `aclose()` closes the owned client.
+- [x] Real-network live check: Nairobi + Mombasa + one cloudy point
+      give plausible NDVI/cloud values; deliberate 400 maps to
+      `ProviderResponseInvalid`; refused connection maps to
+      `ProviderUnavailable`.
+- [x] Full quality gate green (offline).
+
+#### Unit Tests Required
+All mapping/QA/taxonomy paths via `httpx.MockTransport` (pure, no
+network).
+
+#### Integration Tests Required
+- [x] Registry path: `get_provider("satellite", mode="live")` resolves
+  the registered class via the real `default_registry`.
+
+#### Security Checks Required
+- [x] No API keys or credentials anywhere (keyless upstream); no
+  secrets in URLs or log lines; only farm centroids are sent, to a
+  documented NASA/ORNL endpoint.
+- [x] bandit + pip-audit clean (no new dependencies).
+
+#### Performance Checks Required
+- [x] Two HTTP calls per fetch (~5–6 s measured end to end), one
+  pooled client per process, 20 s timeout bounds each call.
+
+#### Memory/Resource Checks Required
+- [x] `aclose()` releases the client; the registry cache never leaks a
+  client across processes.
+
+#### Failure Scenarios to Handle
+- DNS/connect refused/timeout → `ProviderUnavailable`.
+- Upstream 5xx/429 → `ProviderUnavailable`.
+- Upstream 400 (`No data available for time period`, bad params) →
+  `ProviderResponseInvalid`.
+- Empty `subset` (no coverage) → `ProviderResponseInvalid`.
+- Missing NDVI/quality band, non-list `data`, empty `dates`, an
+  unparseable `calendar_date`, or no composite dated ≤ today →
+  `ProviderResponseInvalid`.
+- All pixels QA-invalid → reading with `ndvi=None` (still a valid
+  reading; the cloud figure explains why).
+
+#### Rollback Strategy
+Delete `satellite_live.py` + its import/export lines + tests; nothing
+else references the live mode (settings default remains `demo`, so no
+behavior changes on rollback).
+
+#### Verification Commands
+```bash
+uv run pytest tests/providers -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No time-series/compositing across scenes (latest composite only), no
+invented cloud-masking policy beyond the product's QA, no HTTP-layer
+caching/retry/backoff (single attempt per call; ingestion owns skip
+decisions), no DB writes (M026), no unit/timeframe normalization
+(M031), no API-key settings (upstream is keyless).
+
+#### Verification & Notes (added on completion)
+- Gate PASSED (2026-09-29, live dev DB on 65432): `ruff format --check`
+  OK, `ruff check` OK, `mypy` OK (104 source files), `pytest` **403
+  passed / 0 skipped** (363 prior + 40 new in
+  `tests/providers/test_satellite_live.py`); `bandit -r -ll
+  src/providers workers` = 0 findings; `pip-audit` = no known
+  vulnerabilities (no dependency added for this milestone).
+- **Live check `live_m027.py` (real HTTP, 8/8 PASS):** Nairobi
+  `ndvi=0.2731 / 0.0% cloud`, Mombasa `0.3508 / 0.0%`, Amazon
+  rainforest `0.8581` (asserted ≥ 0.5), Oman desert `0.109`
+  (asserted ≤ 0.3), Sydney `0.3947 / 66.7% cloud` — all
+  `captured_at=2026-08-13`, `source=ornl-daac-modis-mod13q1`;
+  ocean point `(0, -140)` → `ProviderResponseInvalid`; real upstream
+  **404** → `ProviderResponseInvalid` with the trimmed upstream text;
+  closed port `127.0.0.1:9` → `ProviderUnavailable`.
+- **Deviation (logged):** the spec's "deliberate 400" became a
+  deliberate **404**. The provider only ever requests a date the
+  upstream calendar just handed it, so there is no request shape we
+  can drive at ORNL that reliably yields a 400; a bogus base path
+  yields a genuine upstream 4xx through the *same* code branch
+  (`status != 200 → ProviderResponseInvalid`), which is what the
+  criterion is really about. The upstream's own 400 wording
+  (`No data available for time period …`) is unit-covered with a
+  mocked response.
+- **Finding:** `/dates` returns the **global** MODIS calendar — the
+  identical 610-entry list for a mid-ocean point — so it proves
+  nothing about coverage; only `/subset` does. Recorded so nobody
+  later "optimizes" it into a coverage check.
+- **Finding:** upstream cost is O(composites returned): 3 composites
+  = 11.5 s vs 1 composite ≈ 3 s, and NASA's latency at Nairobi
+  measured **47 days** (2026-08-13 composite observed on
+  2026-09-29). Together these are why the two-request protocol beat a
+  look-back window: a window is both slower and latently fragile.
+- **Finding:** the upstream answers 4xx/`404` with **plain text**, not
+  JSON. It is surfaced trimmed to `UPSTREAM_MESSAGE_MAX = 200`
+  chars (`"modis HTTP 404 on dates: \"Product bogus not found.\""`) —
+  actionable, and still not a raw payload dump.
+- **Finding:** tests derive every date from `datetime.now(UTC).date()`
+  at import time (`PAST_DAY`/`LATEST_DAY`/`FUTURE_DAY`), so the
+  "newest composite ≤ today" selection can never rot as the calendar
+  advances — copy this pattern for any future date-sensitive provider
+  test.
+- isort: `satellite_live`'s registration import sorts directly after
+  `satellite_demo` and before `soil`, keeping the one-line-per-provider
+  block greppable.
