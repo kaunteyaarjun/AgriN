@@ -64,7 +64,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M040 | LLM provider interface + demo provider (templated) | P0 | M021 | done |
 | M041 | AI advisory generation service (decision → prompt → validated text) | P0 | M039, M040 | done |
 | M042 | LLM live provider integration | P0 🔒 | M040 | not-started |
-| M043 | Advisory API endpoint | P0 | M041 | not-started |
+| M043 | Advisory API endpoint | P0 | M041 | done |
 | **What-if simulation** | | | | |
 | M044 | What-if simulation engine (hypothetical re-run of decision pipeline) | P0 | M039 | not-started |
 | M045 | What-if simulation API | P0 | M044 | not-started |
@@ -6491,3 +6491,189 @@ no what-if machinery (M044), no frontend rendering (M050).
 - **Not built (per spec):** no endpoint (M043), no persistence, no new
   agronomic thresholds, no live model or key handling (M042, 🔒), no
   what-if (M044), no frontend (M050).
+
+### M043 — Advisory API endpoint
+
+**Priority:** P0 **Depends On:** M041
+**Status:** done
+
+#### Objective
+`GET /api/v1/farms/{farm_id}/advisory` — authorize with M014's read
+matrix, assemble the farm's decision from the *current* stored state
+(M019 twin → M022 normalize → M032/M033/M034 → M039 `decide_farm`),
+generate the advisory (M041), and return `{"advisory": Advisory,
+"decision": FarmDecision}` in one response.
+
+Nothing assembles the pipeline yet and M044/M047/M048/M050 all need
+that assembly, so this milestone introduces the two reusable pieces the
+endpoint is built from:
+- `src/engines/pipeline.py` — `run_analysis(state, *, now,
+  disease=()) -> FarmAnalysis` (pure: health → risk → recommendations →
+  decision over a handed-in `NormalizedFarmState`).
+- `src/services/analysis.py` — `analyze_farm(session, farm_id, *,
+  now=None, disease=()) -> FarmAnalysis` (I/O: load the twin, normalize
+  its cached signals, call `run_analysis`). `FarmAnalysis` bundles
+  `state`, `health`, `risk`, `recommendations`, `decision`.
+
+#### Why This Milestone Exists
+M041 made advisory generation a callable step; M043 is where it becomes
+user-visible: one authenticated GET that answers "what should I do on
+this farm, in plain language". The pipeline split is what keeps M044
+(what-if re-run) and the M047–M050 read endpoints from re-implementing
+the engine order — and keeps `src/engines/` pure (M001 boundary).
+
+#### Files Expected to Be Created
+- `src/engines/pipeline.py`
+- `src/services/analysis.py`
+- `src/api/v1/advisory.py`
+- `tests/services/test_analysis.py`
+
+#### Files Expected to Be Modified
+- `src/core/errors.py` (new `UpstreamUnavailable`)
+- `src/api/v1/__init__.py` (register the router)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None — reads only (M019/M022 tables). No advisory or analysis is
+persisted; every GET recomputes from current state.
+
+#### API Changes
+- `GET /api/v1/farms/{farm_id}/advisory` → 200
+  `{advisory: {farm_id, stance, text, caveats, source, finish_reason,
+  generated_at}, decision: FarmDecision}` — `Advisory` serializes as
+  M041 defined it (`rendered` stays an in-process property; clients
+  join `text` + `caveats` themselves).
+- Authz matrix = M014 read matrix via `_authorized_farm(...,
+  for_write=False)`: admin ✓, extension officer ✓, owner farmer ✓,
+  non-owner farmer → 404 (no existence oracle), anon → 401.
+- Unknown farm → 404; provider failure (incl. M041 output-policy
+  rejection) → 502 `upstream_unavailable` with a sanitized message.
+
+#### External Dependencies
+None new — existing engines, service, provider and FastAPI stack.
+
+#### Design Decisions
+- **GET, not POST:** the advisory is derived from stored state (a
+  read), the demo provider is deterministic, and no input is accepted.
+  Clients may cache; **rate limiting is M055's** concern. M045's
+  hypothetical re-run (which *does* take a body) will be its own route.
+- **Response carries the decision too.** M050 must render one verdict
+  and one prose without a second call; returning the assembled
+  `FarmDecision` alongside `Advisory` costs nothing (it is already in
+  hand) and avoids a parallel "decision endpoint" later.
+- **`disease=()`, documented, not "no disease support."** M037 results
+  are ephemeral today — no table stores assessments — so `analyze_farm`
+  passes an empty sequence and `FarmDecision.disease_verdicts` comes
+  back all-zero. M049's analysis flow feeds real assessments in later;
+  the parameter exists and is tested now.
+- **One clock per analysis.** `run_analysis` takes a single `now` and
+  hands it to health, risk, recommend and decide — a request crossing
+  midnight can never mix two clocks, and tests inject one timestamp to
+  pin `decision.computed_at`.
+- **The route catches `ProviderError`, the services stay HTTP-free.**
+  New `UpstreamUnavailable(AppError)` (502, generic message) in
+  `core/errors.py`; the route maps both `ProviderUnavailable` and
+  `ProviderResponseInvalid` (M041's output policy) onto it — the single
+  "upstream failed" path M041 promised, now with an HTTP status.
+  Detail is logged, never echoed to the client.
+- **No authz inside services** (M019 standing rule): the route calls
+  `_authorized_farm` first; `analyze_farm` assumes an authorized caller
+  and is tested as such.
+- **No caching, no streaming, no prompt construction at the edge** —
+  `generate_advisory` is called exactly as M041 wrote it.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/core/errors.py`: `UpstreamUnavailable`.
+3. `src/engines/pipeline.py`: `FarmAnalysis`, `run_analysis`.
+4. `src/services/analysis.py`: `analyze_farm`.
+5. `src/api/v1/advisory.py` + router registration.
+6. `tests/services/test_analysis.py` (pure pipeline + DB service) and
+   `tests/api/test_advisory.py` (route: matrix, shape, 502, 404).
+7. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+- [x] `run_analysis` is pure and deterministic: same state + same `now`
+  → identical `FarmAnalysis`; every engine's output is carried in the
+  bundle; `decision.computed_at` equals the injected `now`; no DB, no
+  network, no clock read.
+- [x] disease assessments flow through `run_analysis` into
+  `decision.disease_verdicts` (and empty tuple → all-zero counts).
+- [x] `analyze_farm` loads a stored twin: cached signals reach the
+  engines (a farm whose cache says "stale weather" shows the matching
+  stale family / caveat path), `NotFound` for an unknown farm id, and
+  the service does no authz (a direct call with any session works).
+- [x] route: owner/officer/admin → 200 with both `advisory` (non-empty
+  `text`, caveats listed when the decision is data-blind) and
+  `decision`; anon → 401; non-owner farmer → 404; unknown farm → 404
+  (no existence oracle).
+- [x] route: a stub provider raising `ProviderUnavailable` → 502
+  `error_code=upstream_unavailable`; M041's output-policy rejection
+  (`ProviderResponseInvalid`) → the same 502.
+- [x] route: response `advisory.farm_id` and `decision.farm_id` equal
+  the path farm, `advisory.stance == decision.stance`.
+
+#### Verification Commands
+```bash
+uv run pytest tests/services/test_analysis.py tests/api/test_advisory.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No disease/persistence (M049), no live model or key handling (M042,
+🔒), no what-if inputs or hypothetical re-run (M044/M045), no decision
+dashboard fields or frontend (M047/M050), no rate limiting (M055), no
+advisory caching or storage.
+
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED with live dev DB (65432) — ruff
+  format OK (139 files), ruff check OK, mypy OK (136 sources), pytest
+  **668 passed / 0 skipped** (+12: 7 analysis, 5 advisory-API). Bandit
+  `-r -ll` on `src` + `workers` = 0 findings; pip-audit clean. **No
+  new dependencies, no migration, no endpoint outside `/api/v1`.**
+- **Files:** created `src/engines/pipeline.py`, `src/services/analysis.py`,
+  `src/api/v1/advisory.py`, `tests/services/test_analysis.py`,
+  `tests/api/test_advisory.py`; modified `src/core/errors.py`
+  (`UpstreamUnavailable`), `src/api/v1/__init__.py` (router),
+  `src/engines/__init__.py` (`FarmAnalysis`/`run_analysis` exports).
+- **Findings:**
+  - **The pipeline had to exist before the endpoint did.** Nothing
+    assembled the four engines (M039's tests hand-chained them); the
+    order is now written down once in `run_analysis`, which is also
+    exactly what M044's what-if re-run will call after perturbing the
+    state. Four call sites would have been four chances to reorder.
+  - **One clock, threaded twice:** `analyze_farm` takes a single `now`
+    and passes it to *both* `get_farm_state` (signal age) and
+    `run_analysis` — otherwise `stale_families` and
+    `decision.computed_at` could describe different moments.
+  - **Caught by the API tests: the route forgot `await`.** The pure and
+    service tests passed while all five route tests failed —
+    `generate_advisory` is async (M041), and pydantic rejected the raw
+    coroutine with "input should be a valid Advisory". The layer split
+    earned its keep: the failure could only surface at the HTTP layer,
+    where the async boundary lives.
+  - **`Advisory.rendered` stays an in-process property.** It is not a
+    `computed_field`, so the JSON carries `text` and `caveats`
+    separately and clients join them; touching M041's DTO for a
+    cosmetic response field would have been the wrong milestone.
+  - **Disease is a parameter, not a hole:** `disease=()` because
+    nothing persists M037 assessments yet, but the pipe is tested with
+    a real assessment, so M049 supplies *data* — no plumbing changes.
+  - API-test seeding goes through the **services**
+    (`set_plot_state`/`put_signals`), not M020's routes: a test of the
+    advisory must not break when the state endpoints change.
+  - The blind-farm story is asserted end-to-end: empty cache →
+    `plots_with_unknown_factors == 1` → stance `monitor` → non-empty
+    `advisory.caveats` in the HTTP body — M041's honesty provably
+    survives serialization.
+  - The 502 is asserted *sanitized*: the stub raises "connection
+    refused to internal host" and the client message must not contain
+    it. `UpstreamUnavailable` needs no handler of its own — it is an
+    `AppError`, so M009's catch-all already renders it.
+- **Not built (per spec):** no persistence (M049), no live model
+  (M042, 🔒), no what-if input (M044/M045), no dashboard/frontend
+  (M047/M050), no rate limiting (M055), no advisory caching.

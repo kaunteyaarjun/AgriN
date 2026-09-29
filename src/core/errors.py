@@ -114,6 +114,12 @@ class InvalidImage(AppError):
     message = "The image file is corrupt or invalid."
 
 
+class UpstreamUnavailable(AppError):
+    status_code = 502
+    error_code = "upstream_unavailable"
+    message = "An upstream service could not be reached. Please try again later."
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach the AgriN exception handlers to ``app``."""
 

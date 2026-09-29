@@ -8,7 +8,8 @@ without fixtures.
 
 Five engines ship so far: M032 health (``health``), M033 risk
 (``risk``), M034 recommendations (``recommend``), M037 disease
-(``disease``), M039 decision (``decision``).
+(``disease``), M039 decision (``decision``) — and M043's ``pipeline``
+chains them in that order behind one injectable clock.
 """
 
 from src.engines.decision import (
@@ -45,6 +46,7 @@ from src.engines.health import (
     crop_label_for,
     crop_profile_for,
 )
+from src.engines.pipeline import FarmAnalysis, run_analysis
 from src.engines.recommend import (
     RECOMMENDATION_CATEGORIES,
     RECOMMENDATION_ORDER,
@@ -94,6 +96,7 @@ __all__ = [
     "DecisionAction",
     "DiseaseAssessment",
     "DiseaseCandidateAssessment",
+    "FarmAnalysis",
     "FarmDecision",
     "FarmHealth",
     "FarmRecommendations",
@@ -111,4 +114,5 @@ __all__ = [
     "decide_farm",
     "recommend_farm_actions",
     "risk_band",
+    "run_analysis",
 ]
