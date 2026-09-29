@@ -6,11 +6,19 @@ talks to the database, the network or the clock beyond an injectable
 ``now`` — that keeps every engine answer reproducible and unit-testable
 without fixtures.
 
-Four engines ship so far: M032 health (``health``), M033 risk
+Five engines ship so far: M032 health (``health``), M033 risk
 (``risk``), M034 recommendations (``recommend``), M037 disease
-(``disease``); M039's decision aggregation lands here too.
+(``disease``), M039 decision (``decision``).
 """
 
+from src.engines.decision import (
+    ACTION_ORIGINS,
+    DECISION_STANCES,
+    DISEASE_VERDICT_ACTIONS,
+    DecisionAction,
+    FarmDecision,
+    decide_farm,
+)
 from src.engines.disease import (
     CROP_MISMATCH_FACTOR,
     DETECTED_MIN,
@@ -59,12 +67,15 @@ from src.engines.risk import (
 )
 
 __all__ = [
+    "ACTION_ORIGINS",
     "BAND_THRESHOLDS",
     "CROP_MISMATCH_FACTOR",
     "CROP_PROFILES",
+    "DECISION_STANCES",
     "DEFAULT_CROP_PROFILE",
     "DETECTED_MIN",
     "DISEASE_VERDICTS",
+    "DISEASE_VERDICT_ACTIONS",
     "FACTOR_NAMES",
     "FACTOR_STATUSES",
     "HAZARD_FACTORS",
@@ -80,8 +91,10 @@ __all__ = [
     "STALE_AFTER_SECONDS",
     "SUSPECTED_MIN",
     "CropProfile",
+    "DecisionAction",
     "DiseaseAssessment",
     "DiseaseCandidateAssessment",
+    "FarmDecision",
     "FarmHealth",
     "FarmRecommendations",
     "FarmRisk",
@@ -95,6 +108,7 @@ __all__ = [
     "assess_plot_health",
     "crop_label_for",
     "crop_profile_for",
+    "decide_farm",
     "recommend_farm_actions",
     "risk_band",
 ]

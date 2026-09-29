@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "(none in progress) — M037 (context-aware disease assessment) is done, closing the disease chain M035 → M036 → M037. The next roadmap milestone is M039 (structured decision engine) which is a 🔒 HUMAN CHECKPOINT — it needs explicit approval before implementation; alternates M040 (demo LLM provider) and M054 (demo seed) are unblocked and usable while waiting. M030 stays P2 (see Next milestone)."
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037"]
-Current implementation status: "M037 done: context-aware disease assessment engine — new src/engines/disease.py, peer of health/risk/recommend. assess_disease(state, health, detection, plot_id, *, image_id=None, now=None) → DiseaseAssessment(farm_id, plot_id, plot_name, crop, health_level, image_id, source, verdict, candidates, detected_at, computed_at). Blend rule: context may only DISCOUNT raw model confidence, never inflate it — effective = round(min(1, raw × 0.6 if crop-not-in-catalog × 0.9 if own-plot health==healthy), 3); unregistered crop gets no discount, only an 'affinity unchecked' reason; stressed/watch/unknown canopy adds nothing (consistency is not evidence, so no boost either). Every candidate carries reasons[] as evidence strings (HealthFactor.detail style: raw score, crop line, canopy line, effective score). Verdicts from best candidate: empty → not_detected, ≥0.70 → detected, ≥0.50 → suspected, else uncertain (DETECTED_MIN/SUSPECTED_MIN constants exported). Sort: effective desc, code asc. ValueError guards mirror the trio (farm mismatch, plot not in state, plot not in health). No endpoint, no DB, no farm-level rollup (M039 aggregates)."
+Current milestone: "(none in progress) — M039 (structured decision engine) is done, implemented only after the 🔒 human checkpoint was approved (decision D9, 2026-09-30). The analysis stack is now complete end-to-end: M031→M034 + M037 feed M039's FarmDecision. Next per roadmap: M040 LLM provider interface + demo (P0; dep M021 met) → M041 advisory generation → M043 advisory API; M044/M045 what-if are now unblocked (dep M039 met). Remaining 🔒 checkpoints: M042 (LLM live), M046 (frontend bootstrap), M058. M030 stays P2 (see Next milestone)."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037", "M039"]
+Current implementation status: "M039 done: structured agricultural decision engine (aggregation) — new src/engines/decision.py. decide_farm(state, health, risk, recommendations, disease=(), *, now=) → FarmDecision(farm_id, stance, health_level, risk_score, risk_band, disease_verdicts, actions, action_counts, stale_families, plots_with_unknown_factors, plot_count, computed_at). Pure aggregation: the four engines' outputs are parameters, zero thresholds invented, evidence copied verbatim (M044 re-runs the four then this one). Actions = M034 recommendations passed through (origin='recommendation') + three M039-owned disease actions from M037's worst-verdict-per-plot (treat_disease/urgent/disease_control, verify_disease/soon/scouting, monitor_disease/routine/monitoring; detail = top candidate's reasons joined verbatim; image_id preserved for M049). Stance (routine/monitor/act_now): act_now if risk high OR urgent action OR any plot detected; monitor if risk moderate OR soon action OR any plot suspected/uncertain; else routine — blind farms can never claim routine because M034's data-quality actions are already 'soon'. Total order: priority → origin (disease first) → code → plot name → plot id; ties structurally impossible. ValueError guards: any input's farm_id mismatch (message names the artifact), assessment plot outside state, non-clean verdict with no candidates. New category 'disease_control' is M039-owned (M034's category list untouched)."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -18,10 +18,10 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks:
-  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M037 + a live model decision (M036 done), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. Their P0 predecessors M038–M046 are still unstarted (M031–M037 now done) — spec them just-in-time per Section 8 before any of these can move. M039 needs a 🔒 human checkpoint before implementation (M037, its last code dependency, is now done)."
-Next milestone: "ROADMAP ORDER REACHED A LOCK: M039 (structured agricultural decision engine) is 🔒 — STOP and ask the human for approval before implementing (deps M033+M034+M037 all met now). While waiting (or if refused): M040 demo LLM provider (dep M021 met, P0, unblocked) and M054 demo seed (deps M016+M018 met) are usable alternates. After approval: M040 → M041 → M043 advisory chain, then M044/M045 what-if, M046 frontend. M030 (soil live, P2) and blocked P1s stay outside the demo path. Spec each just-in-time per Section 8."
-Last verification: "M037 gate PASSED with live dev DB (65432): ruff format OK (126 files), ruff check OK, mypy OK (123 sources), pytest 594 passed / 0 skipped (18 new disease-engine tests; four engines total 105); bandit -r -ll on src + workers = 0; pip-audit clean (no new deps). Pure unit milestone — clock injected, no DB, no network."
-Last test result: "pytest = 594 passed (disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+  - "P1 milestones M051, M052, M053 are dependency-blocked: M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046. M038 (disease live model, P1/P2) waits on a live-model decision. P0s still unstarted: M040, M041, M043, M044, M045, M046–M050 (M031–M037, M039 now done) — spec them just-in-time per Section 8. M042 (LLM live) and M046 (frontend) additionally need 🔒 human checkpoints."
+Next milestone: "Roadmap order: M040 LLM provider interface + demo provider (P0; dep M021 met) → M041 AI advisory generation service (needs M039 ✓ + M040) → M043 advisory API. Then M044/M045 what-if (M039's dependency now met) and the 🔒 frontend chain (M046 needs approval). Unblocked alternates: M054 (demo seed, deps M016+M018 met), M030 (soil live, P2). Remaining locks: M042 (LLM live), M046 (frontend), M058. Spec each just-in-time per Section 8 before coding."
+Last verification: "M039 gate PASSED with live dev DB (65432): ruff format OK (128 files), ruff check OK, mypy OK (125 sources), pytest 615 passed / 0 skipped (21 new decision tests; five engines total 126); bandit -r -ll on src + workers = 0; pip-audit clean (no new deps). Pure aggregation milestone — no DB, no network, clock injected; human checkpoint D9 recorded before implementation."
+Last test result: "pytest = 615 passed (decision 21, disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -36,6 +36,7 @@ Last test result: "pytest = 594 passed (disease-engine 18, engines-health 38, re
 | D6 | Python → **3.12** pinned via `.python-version` / `requires-python` |
 | D7 | Farm geometry → **PostGIS `geometry(Geometry, 4326)` column** (human-confirmed 2026-09-27; rejected GeoJSON-in-JSONB and plain lat/lng point). DB image becomes `postgis/postgis:16-3.4`, new pinned dep `geoalchemy2`. |
 | D8 | `httpx` **promoted from dev-only to runtime** dependencies at the same pin `0.28.1` (human-confirmed 2026-09-28) — live providers (M024+) need it at runtime; dev extra unchanged otherwise. |
+| D9 | **M039 human checkpoint approved** (human-confirmed 2026-09-30) — the 🔒 structured-decision engine may be implemented; all code deps (M033, M034, M037) were already met when approval was granted. |
 
 ## Milestone commits
 
@@ -388,3 +389,24 @@ Last test result: "pytest = 594 passed (disease-engine 18, engines-health 38, re
   🔒 checkpoint *with all code dependencies met* — M039 now waits
   purely on human approval, not on other work. Alternates while
   waiting: M040 (LLM demo), M054 (demo seed).
+- 2026-09-30 (M039): **the D9 checkpoint happened exactly as the
+  protocol demands** — implementation started only after explicit
+  human approval, recorded in the decisions table and the roadmap
+  row (`P0 🔒 approved (D9)`). The remaining locks (M042, M046,
+  M058) get the same treatment.
+- 2026-09-30 (M039): the stance rule needed **no blindness clause of
+  its own** — M034's data-quality actions are `soon` by construction,
+  so "any soon → monitor" floors blind farms automatically. When one
+  milestone's precondition (M034: never reassure the blind) becomes
+  another's safety property (M039: never claim routine), that's the
+  composition working; don't duplicate the guard.
+- 2026-09-30 (M039): `disease_control` is the one action category
+  born after M034 — M041/M050 must not assume categories are a
+  closed set. Verdict counts are **per plot, not per photo** (worst
+  verdict wins); advisory copy says "1 plot detected".
+- 2026-09-30 (M039): console emoji trap again — the roadmap's 🔒 in
+  the M039 row renders as `??` through cp1252, so a `Select-String`
+  round-trip through the terminal lies about the file's contents.
+  Edit-match against a direct read (or `ascii()`/`repr()`) whenever
+  emoji or em dashes are in play; this is the third occurrence
+  (MILESTONES em dashes, `→`, now `🔒`).

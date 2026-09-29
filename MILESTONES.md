@@ -60,7 +60,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M037 | Context-aware disease assessment (confidence + farm-state blend) | P0 | M036, M019, M032 | done |
 | M038 | Disease provider live model integration | P1/P2 | M036 | not-started |
 | **Decision engine & AI advisory** | | | | |
-| M039 | Structured agricultural decision engine (aggregation) | P0 🔒 | M033, M034, M037 | not-started |
+| M039 | Structured agricultural decision engine (aggregation) | P0 🔒 approved (D9) | M033, M034, M037 | done |
 | M040 | LLM provider interface + demo provider (templated) | P0 | M021 | not-started |
 | M041 | AI advisory generation service (decision → prompt → validated text) | P0 | M039, M040 | not-started |
 | M042 | LLM live provider integration | P0 🔒 | M040 | not-started |
@@ -5955,3 +5955,191 @@ ones; no signal-staleness multiplier; no LLM (M040/M041).
 - **Not built (per spec):** no live model (M038), no assessment or
   healthy verdict (M037), no endpoint/DB/file read, no pixel
   processing, no bounding boxes, no LLM.
+
+### M039 — Structured agricultural decision engine (aggregation)
+
+**Priority:** P0 (🔒 human checkpoint — approved 2026-09-30, D9)
+**Depends On:** M033, M034, M037
+**Status:** done
+
+#### Objective
+The aggregation engine — `src/engines/decision.py` — that folds the
+four analysis engines into one structured, deterministic
+`FarmDecision`: M032 health rollup, M033 risk score/band, M034's
+canonical action list, and M037's per-plot disease verdicts, plus
+disease-derived actions, a single farm-level **stance**
+(`routine` / `monitor` / `act_now`), and the data-gap caveats M041
+must surface. Signature:
+
+```python
+def decide_farm(
+    state: NormalizedFarmState,
+    health: FarmHealth,
+    risk: FarmRisk,
+    recommendations: FarmRecommendations,
+    disease: Sequence[DiseaseAssessment] = (),
+    *,
+    now: datetime | None = None,
+) -> FarmDecision: ...
+```
+
+#### Why This Milestone Exists
+M041 must phrase one advisory (not four reports), M043 serves one
+answer, M044 re-runs "the pipeline" hypothetically, and M050 renders
+one verdict — every consumer needs a *single* structured input with a
+*single* headline call. This is the milestone the roadmap flagged
+`P0 ??` and 🔒: it decides how the platform decides, so the human
+approved it explicitly (decision D9).
+
+#### Files Expected to Be Created
+- `src/engines/decision.py`
+- `tests/engines/test_decision.py`
+
+#### Files Expected to Be Modified
+- `src/engines/__init__.py` (exports)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None. No table, no endpoint, no persistence — the decision is computed
+on demand (advisory endpoint M043, what-if M044).
+
+#### API Changes
+None (M043 exposes advisory text built from this).
+
+#### External Dependencies
+None (pydantic + stdlib + the four engine modules).
+
+#### Design Decisions
+- **Aggregation, not re-computation.** The four engines' outputs are
+  *parameters*, already computed by the caller — M039 adds no
+  thresholds of its own and never re-derives evidence. This is what
+  makes M044's what-if a clean orchestration (perturb state → re-run
+  the four → re-aggregate) and keeps this milestone honest to its
+  title: "aggregation".
+- **One guard family:** `ValueError` if any input's `farm_id`
+  disagrees with `state.view.farm_id` (message names the artifact, as
+  M033 established), and `ValueError` for a disease assessment whose
+  plot is not in the state.
+- **Recommendations pass through verbatim.** Each M034
+  `Recommendation` becomes a `DecisionAction` with
+  `origin="recommendation"` and identical
+  code/category/priority/title/detail/plot fields — evidence reuse by
+  copy, not re-derivation.
+- **Disease becomes three decision-owned action codes** (M039
+  vocabulary, distinct from M034's so nothing double-lists):
+  `treat_disease` (urgent, category `disease_control`) for a plot's
+  worst verdict `detected`, `verify_disease` (soon, `scouting`) for
+  `suspected`, `monitor_disease` (routine, `monitoring`) for
+  `uncertain`; `not_detected` counts but emits nothing. Titles name
+  the disease label and plot; `detail` is the candidate's
+  `reasons` joined with `"; "` — M041 phrases them verbatim (M032/M034
+  precedent). `image_id` (M037 passthrough) rides along for M049
+  linking. Note: `disease_control` is a **new category**, owned by
+  M039 (documented deviation from M034's category list, which stays
+  untouched).
+- **Worst verdict wins per plot.** Multiple assessments per plot (one
+  per photo) collapse by severity (`DISEASE_VERDICTS` order) then
+  latest `detected_at`; one action per plot, counts are per plot with
+  all four verdict keys present (zeros included — deterministic
+  shape).
+- **Stance is three documented rules, no new thresholds:**
+  `act_now` if risk band `high` OR any urgent action OR any plot
+  `detected`; else `monitor` if risk band `moderate` OR any soon
+  action OR any plot `suspected`/`uncertain`; else `routine`. Blind
+  farms can never claim `routine`, because M034 already emits
+  `soon`-priority data-quality actions when signals are missing or
+  stale — the stance inherits that guard instead of re-inventing it.
+- **Data gaps travel with the decision:** `stale_families` (M032)
+  and `plots_with_unknown_factors` (any factor `factors_evaluated <
+  factor_count`) give M041 its mandatory caveats.
+- **Ordering is total and boring:** priority (M034's
+  urgent/soon/routine) → origin (`disease` before `recommendation` —
+  photo evidence is specific) → code → plot name (farm-level last) →
+  plot id. Ties impossible; M044 re-runs stay byte-identical.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress (priority `??` resolved to
+   P0 with the approval recorded as D9).
+2. `src/engines/decision.py`: models, stance, aggregation.
+3. `src/engines/__init__.py`: exports.
+4. `tests/engines/test_decision.py` (end-to-end over the real four
+   engines — the same composition M044 will re-run).
+5. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+`tests/engines/test_decision.py` (pure unit; fixtures drive the real
+M031→M037 pipeline like this milestone's consumers will):
+- [x] clean farm → `routine`, empty-or-routine actions, all four
+  disease verdict counts present (zeros when no assessments).
+- [x] each stance trigger in isolation: urgent action → `act_now`;
+  plot `detected` → `act_now`; moderate risk alone → `monitor`;
+  `suspected`/`uncertain` disease → `monitor`; high risk → `act_now`.
+- [x] blind farm (no signals) never yields `routine` (M034's
+  data-quality actions floor it at `monitor`).
+- [x] merged ordering: urgent disease action before urgent
+  recommendation; verbatim passthrough of a recommendation's fields.
+- [x] disease action: worst verdict per plot (suspected then detected
+  → one `treat_disease`), `detail` equals the joined `reasons`,
+  title carries label + plot name, `image_id` preserved.
+- [x] counts: per-plot verdict counts, action_counts keyed
+  urgent/soon/routine, `plots_with_unknown_factors` reflects
+  factor-blind plots.
+- [x] guards: farm mismatch on each of the four inputs →
+  `ValueError` naming the artifact; assessment for a plot outside the
+  state → `ValueError`.
+- [x] summary echo: health_level, risk_score, risk_band,
+  stale_families, plot_count, `computed_at == now`; no clock read
+  when `now` is given; same inputs → identical decision.
+
+#### Verification Commands
+```bash
+uv run pytest tests/engines/test_decision.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No thresholds invented here (the four engines own theirs); no
+re-derivation of any evidence string; no advisory text or prompt
+(M041), no endpoint (M043), no persistence, no what-if machinery
+(M044 orchestrates), no LLM (M040), no frontend (M050); the decision
+does not *store* anything and does not call providers or the database.
+
+#### Verification & Notes (added on completion)
+
+- **Human checkpoint:** implemented only after explicit approval
+  (decision **D9**, 2026-09-30); the roadmap row now reads
+  `P0 🔒 approved (D9)`.
+- **Gate:** `scripts/check.ps1` PASSED — 615 passed / 0 skipped (128
+  files formatted, ruff clean, mypy clean on 125 sources). New
+  coverage: `tests/engines/test_decision.py` = 21 tests (five engines
+  now total 126). Bandit 0, pip-audit clean (no new deps).
+- **Files:** created `src/engines/decision.py`,
+  `tests/engines/test_decision.py`; modified `src/engines/__init__.py`
+  (6 exports + docstring "five engines"). No DB, no endpoint.
+- **Findings:**
+  - **Blind-farm safety came free.** The stance rule never needed its
+    own blindness clause: with no signals, M034 already emits
+    `soon`-priority data-quality actions, and "any soon → monitor"
+    floors the farm at `monitor`. Tested explicitly — the guard that
+    M034's spec called a precondition became M039's outcome.
+  - **`disease_control` is a new action category**, owned by M039
+    (M034's `RECOMMENDATION_CATEGORIES` untouched); `scouting` and
+    `monitoring` are reused for verify/monitor. If M041/M050 ever
+    switch on categories, this is the one that arrives later than
+    M034.
+  - Worst-verdict-per-plot collapse means a farm's verdict counts sum
+    to *affected plots*, not photos — M041 must phrase "1 plot
+    detected", never "1 photo detected".
+  - The roadmap's `P0 ??` and 🔒 both resolved at once: D9 records
+    approval, and the emoji in the roadmap line doesn't survive a
+    cp1252 console (`??`), so edits to that row must be matched from
+    file reads, not terminal output — same trap as em dashes.
+  - Ordering ties are structurally impossible (priority → origin →
+    code → plot name → plot id), which is exactly what M044 needs:
+    hypothetical re-runs diff byte-for-byte.
+- **Not built (per spec):** no thresholds/evidence re-derivation, no
+  advisory text (M041), no endpoint (M043), no persistence, no
+  what-if (M044), no LLM, no frontend.
