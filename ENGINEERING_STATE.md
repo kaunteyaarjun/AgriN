@@ -80,6 +80,7 @@ Last test result: "pytest = 639 passed (llm 24, decision 21, disease-engine 18, 
 | M036 | `980298e` |
 | M037 | `e15b3f8` |
 | M039 | `35bd565` |
+| M040 | `f38f448` |
 
 ## Notes / findings
 
