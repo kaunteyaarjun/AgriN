@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "(none in progress) — M035 (image upload endpoint) is done: the system's only untrusted-bytes entry point ships with its limits, and the disease chain has its file source. Next per roadmap: M036 disease provider (deps M021+M035 met) → M037 disease assessment (needs M032), then the 🔒 M039 checkpoint. M040/M054 remain unblocked alternates; M030 stays P2 (see Next milestone)."
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035"]
-Current implementation status: "M035 done: image upload endpoint (MIME/size/decompression limits) — new POST /api/v1/farms/{farm_id}/plots/{plot_id}/images (multipart) plus GET list and GET bytes; new src/api/v1/images.py, src/models/plot_image.py, migration 0010 (plot_images: plot_id FK CASCADE, uploaded_by FK SET NULL, sniffed content_type, server-generated stored_name, unique + index on plot_id), 4 new AppErrors (413 payload_too_large, 413 image_too_large, 415 unsupported_media_type, 422 invalid_image), 3 new settings (upload_dir=var/uploads gitignored, upload_max_bytes=5MB, upload_max_pixels=25MP). Validation pipeline order is the milestone: authz via M016's _authorized_plot (owner/admin write, owner/admin/officer read, non-owner → 404) → read(max+1) size cap → Pillow magic-byte sniff (JPEG/PNG/WebP only; client Content-Type and filename never trusted) → pre-decode pixel cap → verify() → write {uuid}.{ext} under upload_dir via asyncio.to_thread → row → 201 with url for M049. Serving is FileResponse with nosniff and no Content-Disposition (inline for the browser). New runtime deps pinned: python-multipart==0.0.32, pillow==12.3.0 (audited clean). No re-encode/EXIF strip, no delete endpoint, no disease logic."
+Current milestone: "(none in progress) — M036 (disease provider interface + demo provider) is done: the fifth provider family is filled, with a crop-linked vocabulary that M037 will read. Next per roadmap: M037 context-aware disease assessment (deps M036+M019+M032 all met) → then the 🔒 M039 checkpoint. M040/M054 remain unblocked alternates; M030 stays P2 (see Next milestone)."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036"]
+Current implementation status: "M036 done: disease provider interface + demo provider — new src/providers/disease.py (DiseaseSpec frozen dataclass, DISEASE_CATALOG of 6 crop-linked codes, pydantic DiseaseCandidate{code validated against catalog, confidence [0,1]} + DiseaseDetection{source, detected_at, detections} where empty list = no findings, abstract DiseaseProvider.detect(bytes), typed get_disease_provider()) and src/providers/disease_demo.py (DemoDiseaseProvider registered (\"disease\",\"demo\"); sha256 payload seed → 0–2 candidates, no duplicates, 20% of inputs yield no findings via seed%5==0, confidence 0.30–0.95, empty payload → ValueError caller guard). No config change (disease_provider flag + KNOWN_FAMILIES slot pre-existed). Providers stay storage-agnostic: bytes in, models out — no DB, no file read, no pixel processing. No endpoint, no assessment, no live model."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -18,10 +18,10 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks:
-  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M036/M037 (disease provider+assessment), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. Their P0 predecessors M036–M046 are still unstarted (M031–M035 now done) — spec them just-in-time per Section 8 before any of these can move. M039 additionally needs a 🔒 human checkpoint before implementation."
-Next milestone: "Roadmap order: M036 Disease provider interface + demo provider (P0; deps M021 provider pattern + M035 image upload, both met) → M037 context-aware disease assessment (needs M036, M019, M032), then M039 (decision engine, 🔒 — ask the human) and the advisory chain M040 → M041 → M043. Unblocked alternates not on the critical path: M040 (demo LLM provider, dep M021), M054 (deterministic demo seed, deps M016+M018), M044/M045 (what-if, need M039). M030 (soil live, P2) and the blocked P1s remain outside the demo path. Spec each just-in-time per Section 8 before coding."
-Last verification: "M035 gate PASSED with live dev DB (65432): ruff format OK (121 files), ruff check OK, mypy OK (118 files), pytest 564 passed / 0 skipped (10 new image tests); alembic upgrade + check clean (0010 hand-written, no drift), migration round-trip green; bandit -r -ll on src + workers = 0; pip-audit clean INCLUDING the two new runtime deps (python-multipart 0.0.32, pillow 12.3.0)."
-Last test result: "pytest = 564 passed (images-API 10, recommend 22, risk 27, engines-health 38, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M036/M037 (disease provider+assessment), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. Their P0 predecessors M037–M046 are still unstarted (M031–M036 now done) — spec them just-in-time per Section 8 before any of these can move. M039 additionally needs a 🔒 human checkpoint before implementation."
+Next milestone: "Roadmap order: M037 Context-aware disease assessment (P0; deps M036+M019+M032, all met) → M039 (decision engine, 🔒 — ask the human, needs M033+M034+M037) → advisory chain M040 → M041 → M043. Unblocked alternates not on the critical path: M040 (demo LLM provider, dep M021), M054 (deterministic demo seed, deps M016+M018), M044/M045 (what-if, need M039). M030 (soil live, P2) and the blocked P1s remain outside the demo path. Spec each just-in-time per Section 8 before coding."
+Last verification: "M036 gate PASSED with live dev DB (65432): ruff format OK (124 files), ruff check OK, mypy OK (121 sources), pytest 576 passed / 0 skipped (12 new disease provider tests); bandit -r -ll on src + workers = 0; pip-audit clean (no new deps). Pure unit milestone — no DB, no network by design; the demo provider is deterministic over payload bytes."
+Last test result: "pytest = 576 passed (disease 12, images-API 10, recommend 22, risk 27, engines-health 38, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -351,3 +351,19 @@ Last test result: "pytest = 564 passed (images-API 10, recommend 22, risk 27, en
   bytes on disk in `var/uploads` (orphaned files — documented,
   cleanup deferred). Any future delete endpoint must remove both
   halves transactionally, or the limitation merely grows.
+- 2026-09-29 (M036): **vocabulary belongs to the interface, not the
+  engine.** `DISEASE_CATALOG` (code → label + plausible crops) sits in
+  `src/providers/disease.py` because it defines what a provider may
+  *report*; M037 will read it for its crop blend and M049 for labels.
+  If assessment ever needs a disease the catalog lacks, add it here —
+  a second list in the engine is how vocabularies fork.
+- 2026-09-29 (M036): catalog validation is a pydantic
+  `field_validator`, so an unknown code raises `ValidationError` at
+  *construction* — the demo cannot drift, and M038's live provider
+  must catch and map it to `ProviderResponseInvalid` at its boundary.
+  Contract errors that fail at model build time never reach a caller.
+- 2026-09-29 (M036): the `"disease"` family was reserved since M002
+  (settings flag) and M021 (`KNOWN_FAMILIES`); filling it needed zero
+  config changes. Reserving slots early costs nothing and removes a
+  whole class of "plumbing" work from later milestones — same trick
+  will pay off for `llm` in M040.

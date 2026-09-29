@@ -56,7 +56,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M034 | Crop recommendation engine (rule-based) | P0 | M031, M032 | done |
 | **Disease diagnosis** | | | | |
 | M035 | Image upload endpoint (MIME/size/decompression limits) | P0 | M016 | done |
-| M036 | Disease provider interface + demo provider | P0 | M021, M035 | not-started |
+| M036 | Disease provider interface + demo provider | P0 | M021, M035 | done |
 | M037 | Context-aware disease assessment (confidence + farm-state blend) | P0 | M036, M019, M032 | not-started |
 | M038 | Disease provider live model integration | P1/P2 | M036 | not-started |
 | **Decision engine & AI advisory** | | | | |
@@ -5626,3 +5626,164 @@ no rate limiting (M055); no frontend (M049).
 - **Not built (per spec):** no re-encode/resize/EXIF strip, no virus
   scan, no S3/CDN, no delete endpoint, no disease logic, no rate
   limiting, no frontend.
+
+### M036 — Disease provider interface + demo provider
+
+**Priority:** P0 **Depends On:** M021, M035
+**Status:** done
+
+#### Objective
+The typed `disease` family contract every disease source must satisfy —
+`DiseaseDetection` / `DiseaseCandidate` models, a **crop-linked disease
+vocabulary** (`DISEASE_CATALOG`), the abstract
+`DiseaseProvider.detect(image: bytes)` and the typed
+`get_disease_provider()` accessor — plus a deterministic, network-free
+demo implementation registered under `("disease", "demo")` through the
+normal M021 registry path.
+
+#### Why This Milestone Exists
+M037 must blend a diagnosis with farm state, so it needs one canonical
+shape and one canonical vocabulary to blend *against* — crop affinity
+lives with the vocabulary, not re-derived per consumer. M038 swaps in a
+live model behind the same ABC without touching M037, and M049's
+"upload → result" flow starts here: bytes in, structured candidates out.
+The family flag (`disease_provider`, M002) and the `KNOWN_FAMILIES`
+slot already exist; this milestone fills them.
+
+#### Files Expected to Be Created
+- `src/providers/disease.py` (models, catalog, ABC, typed getter)
+- `src/providers/disease_demo.py`
+- `tests/providers/test_disease.py`
+
+#### Files Expected to Be Modified
+- `src/providers/__init__.py` (contract exports + one registration
+  import, the established grep-able line)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None. No table, no endpoint, no persistence — detection results become
+rows only when an assessment/endpoint milestone asks for them.
+
+#### API Changes
+None. The provider is consumed by M037's assessment (and later an
+endpoint), not called directly from HTTP.
+
+#### External Dependencies
+None (pydantic + stdlib). M035's Pillow is deliberately *not* used
+here: the provider receives opaque bytes and never inspects or
+transforms pixels (sniffing already happened at upload).
+
+#### Design Decisions
+- **Bytes in, models out.** The provider never touches the database or
+  the filesystem — the caller reads the file M035 wrote and passes the
+  bytes. This keeps providers storage-agnostic (M021 rule) and makes
+  the demo trivially unit-testable.
+- **The vocabulary is part of the contract.** `DISEASE_CATALOG:
+  Final[dict[str, DiseaseSpec]]` maps code → human label + the set of
+  crops it plausibly affects (`frozenset` of `maize`/`wheat`/`beans`
+  — the M032 crop profiles). M037 down-weights a candidate whose
+  catalog crops don't include the plot's crop; defining that here
+  means one source of truth instead of a second list in the engine.
+  `DiseaseSpec` is a frozen dataclass (`Final` catalog), mirroring
+  `CropProfile`'s style in `health.py`.
+- **Codes are validated against the catalog** by a pydantic validator
+  on `DiseaseCandidate.code` — a live provider (M038) that invents a
+  code fails loudly at the model boundary (`ValidationError`, to be
+  mapped to `ProviderResponseInvalid` by that milestone), and the demo
+  cannot drift either.
+- **Confidence is a probability-shaped float in [0, 1]** with the demo
+  documenting a narrower honest range (0.30–0.95: a demo model never
+  claims certainty it cannot have).
+- **An empty `detections` list means "no findings"** — no synthetic
+  `healthy` label. M037 owns the healthy wording; the provider only
+  reports what it (did not) find.
+- **Demo determinism from the payload itself** (`image_seed`: sha256 of
+  the bytes) — same photo always yields the same diagnosis, which is
+  what makes the demo stable and testable. Documented behavior:
+  0–2 candidates, no duplicate codes, 20 % of inputs yield no findings
+  (`seed % 5 == 0`), confidence 0.30–0.95.
+- **Empty payload → `ValueError`** (caller-bug guard, same doctrine as
+  `_demo.check_wgs84`), never `ProviderError` — no upstream was
+  contacted. M035's upload pipeline makes it unreachable in practice.
+- **No bounding boxes, no crop/resize, no preprocessing** — the demo
+  does no vision, and pixels arrive exactly as M035 stored them. If
+  M038's live model needs regions or a resized input, it gains
+  *optional* fields then; nothing in this contract blocks that.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/providers/disease.py`: models, catalog, ABC, getter.
+3. `src/providers/disease_demo.py`: `@register` demo provider.
+4. `src/providers/__init__.py`: exports + registration import.
+5. `tests/providers/test_disease.py`.
+6. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+`tests/providers/test_disease.py` (pure unit — no DB, no network):
+- [x] registered through the normal settings path: `get_provider("disease")`
+  resolves the demo (default flag), typed getter returns
+  `DiseaseProvider`, family/mode/name correct, registry caches one
+  instance; `get_disease_provider(mode="live")` →
+  `ProviderNotRegistered` (M038 not built).
+- [x] determinism: same bytes → identical detections; different bytes
+  → different result.
+- [x] documented ranges over a fixed sweep: confidence within
+  0.30–0.95, 0–2 candidates, every code in `DISEASE_CATALOG`, no
+  duplicate codes within one result, at least one empty result
+  (the no-findings path) and at least one non-empty in the sweep.
+- [x] contract validation: unknown `code` → `ValidationError`;
+  confidence outside [0, 1] → `ValidationError`; catalog codes all
+  construct cleanly.
+- [x] caller guard: empty payload → `ValueError`.
+- [x] catalog sanity: every entry's crops are a subset of the known
+  crop profiles; labels non-empty.
+
+#### Verification Commands
+```bash
+uv run pytest tests/providers/test_disease.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No live model or HTTP call (M038); no assessment, thresholds,
+farm-state blend or "healthy" verdict (M037); no endpoint, DB row or
+file read (M049's flow consumes M037 first); no image decoding,
+resizing or re-encoding; no bounding boxes; no LLM involvement (M040).
+
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED — 576 passed / 0 skipped (124
+  files formatted, ruff clean, mypy clean on 121 sources). New
+  coverage: `tests/providers/test_disease.py` = 12 tests. Bandit 0,
+  pip-audit clean (no new deps for this milestone).
+- **Files:** created `src/providers/disease.py`,
+  `src/providers/disease_demo.py`, `tests/providers/test_disease.py`;
+  modified `src/providers/__init__.py` (6 contract exports + one
+  registration import). No config change — the `disease_provider`
+  flag (M002) and the `"disease"` slot in `KNOWN_FAMILIES` (M021)
+  already existed waiting to be filled.
+- **Findings:**
+  - **The catalog-as-contract decision is the load-bearing one.**
+    `DISEASE_CATALOG` lives in the provider module but is consumed by
+    M037 (crop affinity) and eventually M049 (labels) — a vocabulary
+    that travels with the interface, so no consumer ever re-derives
+    its own list. If a future milestone needs a disease the catalog
+    lacks, the change happens *here*, once.
+  - **Contract validation direction:** unknown codes raise pydantic
+    `ValidationError` at model construction — the demo cannot drift,
+    and M038's live provider must map that error to
+    `ProviderResponseInvalid` at its boundary (noted for that spec).
+  - Import sorting moved the "concrete providers register themselves"
+    comment along with `disease_demo` (isort attaches a preceding
+    comment to the *following* import). Accepted ruff's fix; the
+    comment now heads the first concrete import, still one grep-able
+    line per provider.
+  - The 60-input sweep deterministically covers both paths (the
+    `seed % 5 == 0` no-findings rule and the detection path) — no
+    randomness in CI, as with every other demo provider.
+- **Not built (per spec):** no live model (M038), no assessment or
+  healthy verdict (M037), no endpoint/DB/file read, no pixel
+  processing, no bounding boxes, no LLM.

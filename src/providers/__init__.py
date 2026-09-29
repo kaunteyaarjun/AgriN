@@ -12,6 +12,18 @@ Usage by later milestones:
 from __future__ import annotations
 
 from src.providers.base import KNOWN_FAMILIES, BaseProvider
+from src.providers.disease import (
+    DISEASE_CATALOG,
+    DiseaseCandidate,
+    DiseaseDetection,
+    DiseaseProvider,
+    get_disease_provider,
+)
+
+# Concrete providers register themselves on import — one grep-able line
+# per provider (M021 rule: no auto-discovery/entry-point magic; each
+# implementation import sorts directly after its family's contract import).
+from src.providers.disease_demo import DemoDiseaseProvider  # noqa: F401  (registers on import)
 from src.providers.errors import (
     ProviderError,
     ProviderNotRegistered,
@@ -24,10 +36,6 @@ from src.providers.satellite import (
     SatelliteReading,
     get_satellite_provider,
 )
-
-# Concrete providers register themselves on import — one grep-able line
-# per provider (M021 rule: no auto-discovery/entry-point magic; each
-# implementation import sorts directly after its family's contract import).
 from src.providers.satellite_demo import DemoSatelliteProvider  # noqa: F401  (registers on import)
 from src.providers.satellite_live import LiveSatelliteProvider  # noqa: F401  (registers on import)
 from src.providers.soil import SoilProvider, SoilReading, get_soil_provider
@@ -39,9 +47,14 @@ from src.providers.weather_live import LiveWeatherProvider  # noqa: F401  (regis
 __all__ = [
     "KNOWN_FAMILIES",
     "BaseProvider",
+    "DISEASE_CATALOG",
+    "DemoDiseaseProvider",
     "DemoSatelliteProvider",
     "DemoSoilProvider",
     "DemoWeatherProvider",
+    "DiseaseCandidate",
+    "DiseaseDetection",
+    "DiseaseProvider",
     "LiveSatelliteProvider",
     "LiveWeatherProvider",
     "ProviderError",
@@ -56,6 +69,7 @@ __all__ = [
     "WeatherProvider",
     "WeatherReading",
     "default_registry",
+    "get_disease_provider",
     "get_provider",
     "get_satellite_provider",
     "get_soil_provider",
