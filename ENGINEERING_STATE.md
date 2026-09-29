@@ -73,6 +73,7 @@ Last test result: "pytest = 532 passed (risk 27, engines-health 38, normalize 64
 | M029 | `05fce19` |
 | M031 | `496eae9` |
 | M032 | `3acd7f9` |
+| M033 | `9a494b9` |
 
 ## Notes / findings
 
