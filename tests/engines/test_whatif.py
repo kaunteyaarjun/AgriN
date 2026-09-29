@@ -232,7 +232,7 @@ def test_restamping_clears_staleness_and_the_points_behind_it() -> None:
         ({}, "no what-if overrides"),
         ({"rain": {"mm": 1.0}}, "unknown what-if family: 'rain'"),
         ({"weather": {"dew_point_c": 5.0}}, "unknown what-if knob: weather.dew_point_c"),
-        ({"soil": {"ph": "6.5"}}, "weather" if False else "must be a number"),
+        ({"soil": {"ph": "6.5"}}, "must be a number"),
         ({"soil": {"ph": True}}, "must be a number, got bool"),
         ({"soil": {"ph": 20.0}}, "outside the allowed range"),
         ({"satellite": {"ndvi": 2.0}}, "outside the allowed range"),
@@ -242,7 +242,7 @@ def test_restamping_clears_staleness_and_the_points_behind_it() -> None:
     ],
 )
 def test_invalid_overrides_raise_value_error(overrides: dict, fragment: str) -> None:
-    with pytest.raises(ValueError, match=None) as excinfo:
+    with pytest.raises(ValueError) as excinfo:
         simulate_what_if(_state(), overrides, now=NOW)
     assert fragment in str(excinfo.value)
 
