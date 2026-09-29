@@ -72,6 +72,7 @@ Last test result: "pytest = 505 passed (engines-health 38, normalize 64, weather
 | M028 | `8913402` |
 | M029 | `05fce19` |
 | M031 | `496eae9` |
+| M032 | `3acd7f9` |
 
 ## Notes / findings
 
