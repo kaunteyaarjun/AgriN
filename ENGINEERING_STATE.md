@@ -63,6 +63,7 @@ Last test result: "pytest = 363 passed (weather-live 57, soil-ingestion 11, soil
 | M021 | `890755e` |
 | M022 | `90ea7ce` |
 | M023 | `31d3988` |
+| M024 | `3ee8e5d` |
 | M025 | `15d5f73` |
 | M026 | `33625fe` |
 | M028 | `8913402` |
