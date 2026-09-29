@@ -68,6 +68,7 @@ Last test result: "pytest = 403 passed (satellite-live 40, weather-live 57, soil
 | M024 | `3ee8e5d` |
 | M025 | `15d5f73` |
 | M026 | `33625fe` |
+| M027 | `e44de02` |
 | M028 | `8913402` |
 | M029 | `05fce19` |
 
