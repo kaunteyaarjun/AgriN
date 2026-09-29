@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "M024 — Weather live provider (Open-Meteo)"
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M025", "M026", "M028", "M029"]
-Current implementation status: "M029 done: soil ingestion vertical (LAST P0 of demo trio) — rev 0009 `soil_observations` (hand-written, alembic check clean; observed_at = fetched_at in-situ, four payload columns with units in names, no raw_units, index (farm_id, observed_at) ASC); SoilObservation model + export; src/ingestion/soil.py (soil_signals_doc / ingest_soil_for_farm / ingest_soil_for_all — fetch-before-write, NotFound, skipped_no_geo, rollback isolation, signals.soil merge PRESERVES weather+satellite keys); workers/soil_ingest.py; rule-of-three: IngestStatus/IngestResult/IngestSummary extracted to src/ingestion/_shared.py (weather+satellite import switched, guard test pins identity). All three M019 signal slots (weather/satellite/soil) now populated by working offline pipelines."
+Current milestone: "M027 — Satellite live provider (P1)"
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M028", "M029"]
+Current implementation status: "M024 done: weather live provider (Open-Meteo) — FIRST network-backed provider. src/providers/weather_live.py LiveWeatherProvider registered (\"weather\",\"live\"), owns one pooled httpx.AsyncClient (10 s timeout, injectable for tests), aclose() closes it; GET /v1/forecast keyless with current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,timezone=auto. Mapping: precipitation (current-hour mm) → rainfall_mm_24h slot (documented approximation, M031 owns semantics); WMO code → 5-value condition table (snow/unknown → cloudy, absent/null → None); non-numeric → None. Taxonomy in anger: timeout/transport/5xx/429 → ProviderUnavailable, other 4xx/bad JSON/missing current → ProviderResponseInvalid, no raw exception escapes. httpx 0.28.1 promoted dev → runtime dep (D8, same pin). Settings default stays demo — nothing downstream changes behavior."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -17,9 +17,9 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks: []
-Next milestone: "M024 — Weather live provider Open-Meteo (P1, not locked; depends M023 met — first of the P1s by roadmap number). Then M027 (satellite live, P1), then M030 (soil live, P2). All P0s complete (human-confirmed P0-first ordering 2026-09-28); live providers = first network HTTP + ProviderUnavailable/ProviderResponseInvalid mapping in anger."
-Last verification: "M029 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK, pytest 306 passed / 0 skipped (11 new soil-ingestion tests, weather+satellite suites green post-_shared extraction); alembic check = 'No new upgrade operations detected'; bandit -r -ll on src/ingestion + src/models + workers + tests/ingestion = 0; pip-audit clean. Live (live_m029.py + real worker): ALL PASS — seeded geo/no-geo farms with weather+satellite keys pre-seeded, `python -m workers.soil_ingest` ×2 (both: ingested=1 skipped_no_geo=1 provider_error=0 failed=0; verify after run 2 = 8/8 incl. 2 append-only rows, moisture 28.5/ph 6.2 in range, weather+satellite keys survived, soil cache doc, no_geo clean), `--farm` mode ingested, cleanup left soil observations remaining=0."
-Last test result: "pytest = 306 passed (soil-ingestion 11, soil 15, satellite-ingestion 11, satellite 14, weather-ingestion 10, weather-demo 14, providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+Next milestone: "M027 — Satellite live provider (P1, depends M026 — the only other actionable P1; M030 is P2, M038/M051/M052/M053 are P1 but blocked on P0 specs not yet written). Needs a real NDVI-capable source: check keyless/free options (NASA CMR / Sentinel OData) and write the spec JUST-IN-TIME (Section 8) before implementing; M024's shape = client ownership + taxonomy + MockTransport tests + live check."
+Last verification: "M024 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK (102 files), pytest 363 passed / 0 skipped (57 new weather-live tests); bandit -r -ll on src/providers + workers = 0; pip-audit clean. Live (live_m024.py, real HTTP): 4/4 PASS — Nairobi 22.4C/48%/0.0mm/15.1km/h/partly_cloudy, Mombasa 26.1C/81%/0.0mm/16.9km/h/clear (source open-meteo-v1); latitude=999 → upstream 400 → ProviderResponseInvalid; closed port 127.0.0.1:9 → ProviderUnavailable."
+Last test result: "pytest = 363 passed (weather-live 57, soil-ingestion 11, soil 15, satellite-ingestion 11, satellite 14, weather-ingestion 10, weather-demo 14, providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -33,6 +33,7 @@ Last test result: "pytest = 306 passed (soil-ingestion 11, soil 15, satellite-in
 | D5 | JWT library → **PyJWT** (Section 3 allows "python-jose or pyjwt") |
 | D6 | Python → **3.12** pinned via `.python-version` / `requires-python` |
 | D7 | Farm geometry → **PostGIS `geometry(Geometry, 4326)` column** (human-confirmed 2026-09-27; rejected GeoJSON-in-JSONB and plain lat/lng point). DB image becomes `postgis/postgis:16-3.4`, new pinned dep `geoalchemy2`. |
+| D8 | `httpx` **promoted from dev-only to runtime** dependencies at the same pin `0.28.1` (human-confirmed 2026-09-28) — live providers (M024+) need it at runtime; dev extra unchanged otherwise. |
 
 ## Milestone commits
 
@@ -166,3 +167,20 @@ Last test result: "pytest = 306 passed (soil-ingestion 11, soil 15, satellite-in
   via `-k` pair bisection before the fix — `test_unknown_farm_…`
   skipped its successor `test_ingest_for_all_…` but passed alone).
   `_db`'s teardown (`dispose_engine`) is what clears the pool.
+- 2026-09-29 (M024): **first real network provider shipped.** Recipe
+  that later live providers (M027/M030/M040) should copy: own one
+  pooled `httpx.AsyncClient` (module-constant timeout) with an
+  injectable client/base_url for `MockTransport` tests, map every
+  transport/HTTP/parse failure onto the M021 taxonomy inside `fetch`
+  (no raw exception may escape), override `aclose()`, register with
+  one comment-marked import line, keep the settings default on
+  `demo`. `httpx.MockTransport` propagates handler exceptions
+  unchanged, so taxonomy tests run through the genuine client path.
+- 2026-09-29 (M024): **absent ≠ unknown.** `condition=None` when the
+  upstream omits `weather_code`, `cloudy` when it sends a value we
+  can't fold — an optional field must not be filled with a plausible
+  guess. Same idea applies to every future live mapping.
+- 2026-09-29 (M024): Docker Desktop was not running at gate time; the
+  authorized path (D4) is to start it and `docker compose up -d db`
+  (port 65432) before any gate run — DB-touching tests skip without
+  it, and a "green" run with skips is NOT a passing gate.

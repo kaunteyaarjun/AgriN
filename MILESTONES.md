@@ -41,7 +41,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M021 | Provider interface pattern (abstract base + registry) | P0 🔒 | M002 | done |
 | M022 | Weather demo provider | P0 | M021 | done |
 | M023 | Weather ingestion service + storage table | P0 | M022, M019 | done |
-| M024 | Weather live provider (Open-Meteo) | P1 | M023 | not-started |
+| M024 | Weather live provider (Open-Meteo) | P1 | M023 | done |
 | M025 | Satellite/NDVI demo provider | P0 | M021 | done |
 | M026 | Satellite ingestion service + storage table | P0 | M025, M019 | done |
 | M027 | Satellite live provider | P1 | M026 | not-started |
@@ -4138,3 +4138,193 @@ soil variation (per-farm grain, M019).
 - **P0 demo trio complete (M025/M026/M028/M029).** Next per
   human-confirmed ordering: P1s M024 (weather live) / M027 (satellite
   live), then P2 M030 (soil live).
+
+---
+
+### M024 — Weather live provider (Open-Meteo)
+
+**Priority:** P1 **Depends On:** M023
+**Status:** done
+
+#### Objective
+`src/providers/weather_live.py`: the first network-backed provider —
+`LiveWeatherProvider` registered under `("weather", "live")` calling
+Open-Meteo's free forecast API (no API key), mapping the response to
+`WeatherReading`. `get_weather_provider(mode="live")` works;
+default settings stay `demo`.
+
+#### Why This Milestone Exists
+First exercise of the M021 failure taxonomy in anger
+(`ProviderUnavailable` / `ProviderResponseInvalid` mapping from real
+network faults), and the switch that turns the platform from
+pure-demo into live-capable. Every later live provider (M027, M030,
+M040) follows the shape established here.
+
+#### Files Expected to Be Created
+- `src/providers/weather_live.py`
+- `tests/providers/test_weather_live.py`
+
+#### Files Expected to Be Modified
+- `src/providers/__init__.py` (export + explicit registration import)
+- `pyproject.toml`, `uv.lock` (httpx promoted dev → runtime; pin
+  unchanged at `0.28.1`, human-approved)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None.
+
+#### External Dependencies
+- **httpx==0.28.1 promoted to runtime** (was dev-only; same pin —
+  human-confirmed 2026-09-28, D8).
+- Open-Meteo forecast API (free tier, no key):
+  `GET https://api.open-meteo.com/v1/forecast` with
+  `latitude, longitude, current=temperature_2m,relative_humidity_2m,
+  precipitation,weather_code,wind_speed_10m, timezone=auto`.
+  Network reachable from this host (verified before spec'ing).
+
+#### Decisions
+- **Construction:** `LiveWeatherProvider(client=None, base_url=...)`
+  — owns an `httpx.AsyncClient` (10 s timeout, module constant);
+  injectable client/base_url for tests (MockTransport) and the live
+  unreachable-host check. Registry caches one instance per process;
+  `aclose()` overridden to close the client (base no-op replaced).
+- **Field mapping:** `temperature_2m` → `temperature_c`,
+  `relative_humidity_2m` → `humidity_pct`, `wind_speed_10m` →
+  `wind_speed_kmh`, `precipitation` (current hour, mm) →
+  `rainfall_mm_24h` — **documented approximation**: the contract has
+  only a 24h slot; Open-Meteo `current` exposes hourly precipitation.
+  Stored raw in the signals doc; M031 owns semantics.
+  `weather_code` (WMO) → `condition` via a documented table:
+  0 → clear; 1–2 → partly_cloudy; 3/45/48 → cloudy; 51–67, 80–82 →
+  light_rain; **71–77, 85–86 (snow) → cloudy** (vocabulary has no
+  snow value); 95–99 → thunderstorm; unknown codes → cloudy.
+- `fetched_at` = now (UTC); `source` = `name` = `"open-meteo-v1"`.
+- **Error mapping:** `httpx.TimeoutException`/`TransportError` →
+  `ProviderUnavailable`; HTTP 5xx or 429 → `ProviderUnavailable`;
+  other non-2xx (4xx) → `ProviderResponseInvalid`; unparseable body
+  or missing `current` object → `ProviderResponseInvalid`. Missing
+  individual `current` fields → `None` payload (contract is all
+  optional). Raw exceptions never escape (M021 contract).
+- **No WGS84 guard:** live coordinates come from PostGIS centroids
+  (always valid) and Open-Meteo validates requests itself; a 400 maps
+  to `ProviderResponseInvalid`.
+- **Tests never hit the network:** `httpx.MockTransport` only; the
+  real call happens in the live check.
+- **Registration:** one comment-marked import line in
+  `src/providers/__init__.py` (M021 rule); settings default stays
+  `demo` so nothing else changes behavior.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress; pyproject httpx promotion +
+   `uv sync --extra dev` (host lesson: bare `uv sync` prunes the dev
+   *extra*).
+2. `weather_live.py` (client ownership, mapping tables, error taxon
+   mapping).
+3. Exports + registration line.
+4. Tests (`MockTransport`-based, offline).
+5. Gate, live check (real HTTP), docs, state, commits.
+
+#### Acceptance Criteria
+- [x] `get_weather_provider(mode="live")` returns the live provider;
+      default settings still resolve demo.
+- [x] Canned Open-Meteo JSON maps to the expected `WeatherReading`
+      (all five fields + condition table incl. snow→cloudy and
+      unknown→cloudy).
+- [x] Timeouts/connect errors/5xx/429 → `ProviderUnavailable`; 4xx/
+      bad JSON/missing `current` → `ProviderResponseInvalid`; no raw
+      exception escapes.
+- [x] Missing optional `current` fields → `None` payload fields.
+- [x] `aclose()` closes the owned client.
+- [x] Real-network live check: Nairobi + Mombasa readings plausible;
+      deliberate 400 maps to `ProviderResponseInvalid`; refused
+      connection maps to `ProviderUnavailable`.
+- [x] Full quality gate green (offline).
+
+#### Unit Tests Required
+All mapping/error paths above via `httpx.MockTransport` (pure, no
+network).
+
+#### Integration Tests Required
+- [x] Registry path: `get_provider("weather", mode="live")` resolves
+  the registered class via the real `default_registry`.
+
+#### Security Checks Required
+- [x] No API keys (Open-Meteo keyless); no secrets logged — error
+  messages carry httpx/HTTP status text only; coordinates sent to a
+  documented public endpoint (farm centroids, not PII).
+- [x] bandit + pip-audit clean after the dep promotion.
+
+#### Performance Checks Required
+- [x] One pooled `AsyncClient` per process (registry-cached
+  provider), 10 s timeout bounds every call, sequential ingest batch
+  unchanged.
+
+#### Memory/Resource Checks Required
+- [x] `aclose()` releases the client; worker/registry never leaks a
+  client across processes.
+
+#### Failure Scenarios to Handle
+- DNS/connect refused/timeout → `ProviderUnavailable` (ingestion
+  records `provider_error`, batch continues — M023 machinery).
+- Rate limit (429) → `ProviderUnavailable`.
+- 4xx (bad request) → `ProviderResponseInvalid`.
+- Malformed/partial JSON → `ProviderResponseInvalid` or `None`
+  fields as specified above.
+
+#### Rollback Strategy
+Delete `weather_live.py` + its import/export lines + tests;
+`pyproject.toml`/`uv.lock` revert independently (dev-only pin was
+functionally sufficient for the demo path).
+
+#### Verification Commands
+```bash
+uv run pytest tests/providers -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No scheduler/cron (M034+), no retry/backoff policy beyond the single
+call's timeout (ingestion layer owns skip decisions), no API-key
+management (Open-Meteo is keyless), no unit normalization (M031), no
+provider health dashboards.
+
+#### Verification & Notes (added on completion)
+- Gate PASSED (2026-09-29, live dev DB on 65432): `ruff format --check`
+  OK, `ruff check` OK, `mypy` OK (102 source files), `pytest` **363
+  passed / 0 skipped** (306 prior + 57 new in
+  `tests/providers/test_weather_live.py`); `bandit -r -ll
+  src/providers workers` = 0 findings; `pip-audit` = no known
+  vulnerabilities.
+- **Live check `live_m024.py` (real HTTP, 4/4 PASS):** Nairobi
+  `22.4C / 48% / 0.0mm / 15.1km/h / partly_cloudy`, Mombasa
+  `26.1C / 81% / 0.0mm / 16.9km/h / clear` (both `source=
+  open-meteo-v1`, plausible ranges); `latitude=999` → upstream
+  **400** → `ProviderResponseInvalid`; `http://127.0.0.1:9` (closed
+  port) → `ProviderUnavailable` ("All connection attempts failed").
+  Deliberate-400 used the real upstream rather than a stub, so the
+  status mapping was proven against Open-Meteo's own error body.
+- **Decision refinement (logged):** the spec table said "unknown codes
+  → cloudy" without distinguishing *absent* codes; an absent/null
+  `weather_code` now yields `condition=None` (no data), while a
+  present-but-unreadable value (string/bool) or an unknown numeric
+  code still folds to `cloudy`. Rationale: the acceptance criterion
+  requires missing optional `current` fields → `None`, and the
+  5-value vocabulary must not invent an observation upstream never
+  reported. `WeatherObservation.condition` and the signals doc are
+  nullable, so no schema change was needed.
+- **Finding:** `httpx.MockTransport` propagates handler exceptions
+  unchanged, so the taxonomy tests exercise the real client code path
+  (no monkeypatching of `AsyncClient`); timeouts, connect errors and
+  status mapping are all covered end-to-end through `fetch`.
+- **Finding:** the registry-resolution test builds a real
+  `AsyncClient` (no request is made), so it releases it with
+  `default_registry.aclose_all()` in a `finally` — the shared
+  registry must never keep an open client lying around between test
+  modules.
+- **Finding:** `uv sync` alone prunes the dev extra on this host; the
+  post-`pyproject.toml` resync must be `uv sync --extra dev`.
+- Roadmap row + spec status flipped to `done` only after the gate and
+  the live check both passed (status discipline: `done` = committed).

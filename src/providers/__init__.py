@@ -33,6 +33,7 @@ from src.providers.soil import SoilProvider, SoilReading, get_soil_provider
 from src.providers.soil_demo import DemoSoilProvider  # noqa: F401  (registers on import)
 from src.providers.weather import WeatherProvider, WeatherReading, get_weather_provider
 from src.providers.weather_demo import DemoWeatherProvider  # noqa: F401  (registers on import)
+from src.providers.weather_live import LiveWeatherProvider  # noqa: F401  (registers on import)
 
 __all__ = [
     "KNOWN_FAMILIES",
@@ -40,6 +41,7 @@ __all__ = [
     "DemoSatelliteProvider",
     "DemoSoilProvider",
     "DemoWeatherProvider",
+    "LiveWeatherProvider",
     "ProviderError",
     "ProviderNotRegistered",
     "ProviderRegistry",
