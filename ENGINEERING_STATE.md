@@ -71,6 +71,7 @@ Last test result: "pytest = 467 passed (normalize 64, weather-live 57, satellite
 | M027 | `e44de02` |
 | M028 | `8913402` |
 | M029 | `05fce19` |
+| M031 | `496eae9` |
 
 ## Notes / findings
 
