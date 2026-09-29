@@ -52,7 +52,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M031 | Data normalization layer (units/timeframes → Farm State) | P0 | M023, M026, M029 | done |
 | **Analysis engines** | | | | |
 | M032 | Crop health analysis engine (rule-based) | P0 | M031 | done |
-| M033 | Farm risk engine (deterministic scoring) | P0 | M031, M032 | not-started |
+| M033 | Farm risk engine (deterministic scoring) | P0 | M031, M032 | done |
 | M034 | Crop recommendation engine (rule-based) | P0 | M031 | not-started |
 | **Disease diagnosis** | | | | |
 | M035 | Image upload endpoint (MIME/size/decompression limits) | P0 | M016 | not-started |
@@ -5003,3 +5003,183 @@ thresholds.
 - New package `src/engines/` (with `tests/engines/`): pure
   computation, peer of `src/services`. M033/M034/M039 are expected to
   land here rather than in `src/services`.
+
+### M033 — Farm risk engine (deterministic scoring)
+
+**Priority:** P0 **Depends On:** M031, M032
+**Status:** in-progress
+
+#### Objective
+A deterministic farm-level risk score (0–100, band `low` / `moderate`
+/ `high`) assembled from named, individually-scored risk items:
+hazards mapped from M032's health factors, plus visibility penalties
+for stale or missing signal families. Pure, explainable, additive —
+`FarmRisk.items` shows every point in the total.
+
+#### Why This Milestone Exists
+Health says what a plot *is*; risk says what the farm *faces*. M048
+visualises health and risk side by side, M039 aggregates risk into
+decisions and M041 turns it into advice — all three need one shared,
+auditable number instead of three different heuristics.
+
+#### Files Expected to Be Created
+- `src/engines/risk.py`
+- `tests/engines/test_risk.py`
+
+#### Files Expected to Be Modified
+- `src/engines/health.py` (export the two crop-profile helpers)
+- `src/engines/__init__.py` (exports)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None. No table, no endpoint, no persistence.
+
+#### External Dependencies
+None (pydantic + stdlib).
+
+#### Service Contract
+```python
+# src/engines/risk.py
+RISK_BANDS: tuple[str, ...] = ("low", "moderate", "high")
+BAND_THRESHOLDS: tuple[int, int] = (25, 60)   # score <25 low, <60 moderate, else high
+MAX_SCORE: int = 100
+
+SEVERITY_POINTS: dict[str, int] = {"attention": 15, "stress": 30}
+MISSING_SIGNAL_POINTS: int = 15     # per signal family never ingested
+STALE_SIGNAL_POINTS: int = 10       # per signal family past STALE_AFTER_SECONDS
+UNREGISTERED_PLOT_POINTS: int = 10  # per plot with no crop state
+
+RISK_ORDER: tuple[str, ...] = (     # items are emitted in this order, zero-point
+    "drought", "waterlogging",       # items are omitted
+    "heat", "cold", "heavy_rain",
+    "nutrient_shortfall", "soil_ph", "low_vigor",
+    "unregistered_plots", "stale_signals", "missing_signals",
+)
+
+def risk_band(score: int) -> str
+
+class RiskItem(BaseModel):
+    name: str          # one of RISK_ORDER
+    points: int        # its contribution to the total
+    detail: str        # deterministic evidence, e.g. "soil moisture 18.0% < 35.0% (maize)"
+
+class FarmRisk(BaseModel):
+    farm_id: uuid.UUID
+    score: int                 # min(100, sum(item.points))
+    band: str                  # RISK_BANDS
+    items: list[RiskItem]      # non-zero contributions only, RISK_ORDER order
+    hazard_readings_evaluated: int   # usable hazard readings (max 6 per plot)
+    hazard_readings_total: int       # 6 * plot_count
+    plot_count: int
+    computed_at: datetime
+
+def assess_farm_risk(state: NormalizedFarmState, health: FarmHealth, *,
+                     now: datetime | None = None) -> FarmRisk
+    # ValueError when health.farm_id != state.view.farm_id (caller bug)
+```
+
+#### Decisions
+- **Risk is a mapping over M032's output, not a second set of rules.**
+  Every hazard reads a `HealthFactor` M032 already judged (status +
+  measured + the plot's `CropProfile`), so there is exactly one place
+  where "what does 18 % soil moisture mean". Only two things come
+  straight from M031's normalized state: which families are *missing*.
+- **Hazard (conditions) and blind spots (visibility) are the only
+  score components** — deliberately *not* an "impact" component. The
+  farm's health levels are the crop's response to these same
+  conditions, so scoring them again would count one problem twice;
+  M048 shows health next to risk for exactly that reason.
+- **Additive and capped:** severity points (attention 15, stress 30)
+  with `max()` per hazard across plots, plus 15/10 per missing/stale
+  family and 10 per unregistered plot; `score = min(100, sum)`. Every
+  point appears as an item, so the number can always be re-derived by
+  hand — the definition of deterministic scoring.
+- **Bands: `low` < 25, `moderate` < 60, `high` ≥ 60** — one attention
+  (15) stays `low`, one stress (30) or two attentions reach
+  `moderate`, two stresses reach `high`.
+- **Crop profile is per plot**, so the farm's most vulnerable crop
+  drives each hazard (two plots → worst case wins), matching how
+  `FarmHealth` rolls up.
+- **Visibility is real risk:** a family never ingested costs more
+  (15) than a stale one (10), and a plot without crop state costs 10 —
+  you cannot manage what the platform cannot see.
+- **Zero is a legitimate answer:** fresh signals, no hazard, every
+  plot registered → `score == 0`, `band == "low"`, `items == []`.
+- **Guard against caller mistakes:** passing a `FarmHealth` built for
+  another farm raises `ValueError` rather than silently scoring the
+  wrong data.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. Export `crop_profile_for` / `crop_label_for` from `health.py`
+   (renamed from the private helpers M032 used internally).
+3. `risk.py`: constants, `RiskItem`/`FarmRisk`, hazard mapping,
+   visibility penalties, banding.
+4. `tests/engines/test_risk.py` (pure unit, no DB).
+5. Gate, docs, state, two commits (implementation + hash record).
+
+#### Testing Criteria
+`tests/engines/test_risk.py` (pure unit, DB-free):
+- [x] fresh signals, every plot registered, no hazard → `score == 0`,
+  `band == "low"`, `items == []`, readings `6 × plot_count`.
+- [x] one attention (e.g. soil moisture 28 % on maize) → drought
+  15 points → `band == "low"`; one stress (18 %) → 30 → `"moderate"`.
+- [x] direction matters: moisture 90 % → `waterlogging`, not `drought`;
+  temp 42 °C → `heat`, 8 °C → `cold`; rainfall 70 mm/day →
+  `heavy_rain`.
+- [x] every hazard maps: ndvi 0.20 → `low_vigor`, nitrogen 15 →
+  `nutrient_shortfall`, pH 4.9 → `soil_ph`, all 30 points.
+- [x] worst-case across plots: maize stressed + wheat fine → hazard
+  counted once at the higher point value.
+- [x] visibility: missing soil family → `missing_signals` 15;
+  weather stale 25 h → `stale_signals` 10; plot without crop state →
+  `unregistered_plots` 10.
+- [x] cap: enough stress hazards → `score == 100`.
+- [x] bands: `risk_band(24/25/59/60)` → `low/moderate/moderate/high`.
+- [x] item order follows `RISK_ORDER`; zero-point items are absent.
+- [x] determinism: same inputs twice → equal models; mismatched
+  `farm_id` → `ValueError`.
+
+#### Verification Commands
+```bash
+uv run pytest tests/engines -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No weighting model, no probability/likelihood math (this is a
+deterministic tally, not a forecast), no per-plot risk output (farm
+level only; plot detail comes from M032's health), no persistence, no
+API endpoint, no recomputation of M032's thresholds, no LLM.
+
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED — 532 passed / 0 skipped
+  (115 files formatted, ruff clean, mypy clean on 112 sources). New
+  coverage: `tests/engines/test_risk.py` = 27 tests; engines total 65.
+- **Security:** `bandit -r -ll src workers` 0 findings; `pip-audit`
+  clean (only the local `agrin` package skipped). No new dependencies.
+- **Files:** new `src/engines/risk.py`, `tests/engines/test_risk.py`;
+  `src/engines/health.py` exports `crop_profile_for` / `crop_label_for`
+  (renamed from `_profile_for` / `_label_for`); `src/engines/__init__.py`
+  re-exports both plus the risk symbols.
+- **Design confirmation:** risk items reuse M032's `HealthFactor.detail`
+  verbatim as their `detail` — no threshold, label or formatting is
+  duplicated in the risk layer; the only new strings are the three
+  visibility details.
+- **Findings:**
+  - Staleness beats hazard detection when one doc serves both roles:
+    a weather doc 25 h old gives `stale_signals` but its temperature is
+    unknown, so it yields no `heat` item. Test uses a stale satellite
+    doc instead to assert item *order* while keeping heat live.
+  - Visibility-only farm (no families, unregistered plot) = 55 points →
+    `moderate`, not `high` — confirms the 60-point band edge needs at
+    least one real stress hazard too.
+  - Cap test reaches 160 raw points across hazards + stale + missing →
+    reported 100; `RISK_ORDER` caps the item list at 11 names.
+- **Not built (per spec):** no weights/probabilities, no per-plot risk,
+  no persistence, no API — consumers arrive with M048 (dashboard) and
+  M039 (decision aggregation).

@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "(none in progress) — M032 (crop health engine) is done. M033 (risk engine, needs M031+M032) and M034 (recommendation engine, needs M031) are now both unblocked; roadmap order puts M033 next. Remaining P1s stay dependency-blocked and M030 stays P2 (see Next milestone)."
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032"]
-Current implementation status: "M032 done: crop health analysis engine (rule-based) — new pure-computation package src/engines/ (peer of src/services; M033/M034/M039 to follow), src/engines/health.py. assess_plot_health(plot, signals, now=) and assess_farm_health(NormalizedFarmState, now=) emit ALWAYS-SEVEN factors in fixed order (planting, ndvi, soil_moisture, soil_ph, nitrogen, air_temperature, rainfall), each with status ok|attention|stress|unknown, the measured value and a deterministic one-line evidence string (NDVI at 2 dp, everything else 1 dp). Aggregation: planting GATES the verdict (no crop state or future planted_on → unknown), then worst signal factor decides healthy|watch|stressed, no evaluated signal factor → unknown — missing data can never masquerade as health. Thresholds are demo agronomy in CropProfile: CROP_PROFILES for maize/wheat/beans (case-insensitive keys, free-text crop from M018) + DEFAULT_CROP_PROFILE; crop-agnostic temperature [10,35]/[5,40] C and rainfall 30/60 mm/day. OWNS THE STALESS POLICY deferred by M019/M031: STALE_AFTER_SECONDS weather 24 h, soil 24 h, satellite 90 d (90 d = M027's measured 47-day NASA latency + 16-day composite); a stale family's factors become unknown and the family is listed in FarmHealth.stale_families (missing observed_at = unknown but NOT stale). No DB, no endpoint, no persistence — takes the already-normalized state."
+Current milestone: "(none in progress) — M033 (farm risk engine) is done. M034 (crop recommendation engine, needs M031) is the next unblocked P0, then M035/M036/M037; remaining P1s stay dependency-blocked and M030 stays P2 (see Next milestone)."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033"]
+Current implementation status: "M033 done: farm risk engine (deterministic scoring) — new src/engines/risk.py. assess_farm_risk(state, health, *, now=) → FarmRisk(farm_id, score, band, items, hazard_readings_evaluated, hazard_readings_total, plot_count, computed_at); risk_band() = low < 25 ≤ moderate < 60 ≤ high. Pure mapping over M032's HealthFactor verdicts — hazard points (SEVERITY_POINTS attention 15 / stress 30) with max() per hazard across plots; direction from the plot's own CropProfile (moisture < attention_min → drought, > attention_max → waterlogging, temp > 35 → heat else cold, rainfall → heavy_rain, N → nutrient_shortfall, pH → soil_ph, ndvi → low_vigor); plus visibility penalties from M031/M032 (missing family 15, stale family 10, unregistered plot 10). score = min(100, sum(points)); every point is a RiskItem in fixed RISK_ORDER order, detail string reused verbatim from M032's factor evidence (zero threshold/format duplication). Health/crop-response is deliberately NOT scored (no double counting — M048 shows both). Guard: mismatched farm_id → ValueError. health.py now exports crop_profile_for/crop_label_for (were private). No DB, no endpoint, no persistence, no weights/probability math."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -18,10 +18,10 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks:
-  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M036/M037 (disease provider+assessment), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. Their P0 predecessors M033–M046 are still unstarted (M031 + M032 now done) — spec them just-in-time per Section 8 before any of these can move."
-Next milestone: "Roadmap order: M033 Farm risk engine (P0; M031 + M032 both met). M034 Crop recommendation engine (P0; M031 met) is unblocked at the same time and can be taken instead — it does not depend on M033/M032. After the engines: M035 image upload → M036 disease provider → M037 disease assessment (needs M032), then the 🔒 gates (M039 decision engine, M042 LLM live, M046 frontend). M030 (soil live, P2) and the blocked P1s remain outside the demo path. Engines are not lock-restricted but are architecturally significant — spec just-in-time (Section 8) before coding."
-Last verification: "M032 gate PASSED with live dev DB (65432): ruff format OK (113 files), ruff check OK, mypy OK (110 files), pytest 505 passed / 0 skipped (38 new engine tests); bandit -r -ll on src + workers = 0; pip-audit clean (no new deps). No live check by design — the engine is a pure function over M019/M031 data (no network, no DB, injectable now)."
-Last test result: "pytest = 505 passed (engines-health 38, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M036/M037 (disease provider+assessment), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. Their P0 predecessors M034–M046 are still unstarted (M031–M033 now done) — spec them just-in-time per Section 8 before any of these can move."
+Next milestone: "Roadmap order: M034 Crop recommendation engine (P0; M031 met — last unstarted P0 engine). Then M035 image upload → M036 disease provider → M037 disease assessment (needs M032), then the 🔒 gates (M039 decision engine, now unblocked once M034 lands, M042 LLM live, M046 frontend). M030 (soil live, P2) and the blocked P1s remain outside the demo path. Engines are not lock-restricted but are architecturally significant — spec just-in-time (Section 8) before coding."
+Last verification: "M033 gate PASSED with live dev DB (65432): ruff format OK (115 files), ruff check OK, mypy OK (112 files), pytest 532 passed / 0 skipped (27 new risk tests; engines total 65); bandit -r -ll on src + workers = 0; pip-audit clean (no new deps). No live check by design — the engine is a pure function over M031 state + M032 health (no network, no DB, injectable now)."
+Last test result: "pytest = 532 passed (risk 27, engines-health 38, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -279,3 +279,24 @@ Last test result: "pytest = 505 passed (engines-health 38, normalize 64, weather
   normalizer**, so they cover the M031→M032 seam instead of
   hand-building `NormalizedSignals`. Copy that pattern for M033/M034 —
   it fails loudly if either side's contract drifts.
+- 2026-09-29 (M033): **risk reuses health's evidence strings, not its
+  thresholds.** `RiskItem.detail` is the `HealthFactor.detail` from
+  M032 verbatim, so a risk item and the health factor behind it always
+  read the same sentence; only the three visibility details are new
+  strings. Rule: an engine that maps another engine's output must
+  inherit its formatting, never re-derive it.
+- 2026-09-29 (M033): **staleness outranks hazard detection when one
+  doc carries both.** A weather doc 25 h old yields `stale_signals`
+  but its temperature reads `unknown`, so no `heat` item appears —
+  the ordering test had to use a stale *satellite* doc to keep heat
+  live. Expected, and worth remembering for M047: one stale family can
+  hide several hazards at once.
+- 2026-09-29 (M033): **visibility alone tops out at 55 → `moderate`.**
+  Missing all three families (45) + unregistered plot (10) never
+  reaches the `high` band (60); you also need at least one real stress
+  (30). Deliberate: blindness is a problem, but a *measured* hazard is
+  worse.
+- 2026-09-29 (M033): helpers `_profile_for`/`_label_for` were promoted
+  to public `crop_profile_for`/`crop_label_for` and exported from
+  `src/engines` — M034 and M039 need the same profile lookup, so keep
+  them importable rather than reaching into another module's privates.

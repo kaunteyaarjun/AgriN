@@ -178,12 +178,12 @@ def _usable(signals: NormalizedSignals, family: str) -> tuple[Any, str | None]:
     return payload, None
 
 
-def _profile_for(crop: str | None) -> CropProfile:
+def crop_profile_for(crop: str | None) -> CropProfile:
     key = (crop or "").strip().lower()
     return CROP_PROFILES.get(key, DEFAULT_CROP_PROFILE)
 
 
-def _label_for(crop: str | None) -> str:
+def crop_label_for(crop: str | None) -> str:
     return (crop or "unregistered crop").strip().lower()
 
 
@@ -429,8 +429,8 @@ def assess_plot_health(
 ) -> PlotHealth:
     """Rule-evaluate one plot against the farm's normalized signals."""
     moment = now or datetime.now(UTC)
-    profile = _profile_for(plot.crop)
-    label = _label_for(plot.crop)
+    profile = crop_profile_for(plot.crop)
+    label = crop_label_for(plot.crop)
     factors = [
         _planting_factor(plot, moment),
         _ndvi_factor(signals, profile, label),
@@ -504,4 +504,6 @@ __all__ = [
     "STALE_AFTER_SECONDS",
     "assess_farm_health",
     "assess_plot_health",
+    "crop_label_for",
+    "crop_profile_for",
 ]
