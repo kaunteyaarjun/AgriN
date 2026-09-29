@@ -79,6 +79,7 @@ Last test result: "pytest = 615 passed (decision 21, disease-engine 18, engines-
 | M035 | `998d2eb` |
 | M036 | `980298e` |
 | M037 | `e15b3f8` |
+| M039 | `35bd565` |
 
 ## Notes / findings
 
