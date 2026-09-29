@@ -61,7 +61,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M038 | Disease provider live model integration | P1/P2 | M036 | not-started |
 | **Decision engine & AI advisory** | | | | |
 | M039 | Structured agricultural decision engine (aggregation) | P0 🔒 approved (D9) | M033, M034, M037 | done |
-| M040 | LLM provider interface + demo provider (templated) | P0 | M021 | not-started |
+| M040 | LLM provider interface + demo provider (templated) | P0 | M021 | done |
 | M041 | AI advisory generation service (decision → prompt → validated text) | P0 | M039, M040 | not-started |
 | M042 | LLM live provider integration | P0 🔒 | M040 | not-started |
 | M043 | Advisory API endpoint | P0 | M041 | not-started |
@@ -6143,3 +6143,172 @@ does not *store* anything and does not call providers or the database.
 - **Not built (per spec):** no thresholds/evidence re-derivation, no
   advisory text (M041), no endpoint (M043), no persistence, no
   what-if (M044), no LLM, no frontend.
+
+### M040 — LLM provider interface + demo provider (templated)
+
+**Priority:** P0 **Depends On:** M021
+**Status:** done
+
+#### Objective
+The typed `llm` family contract every model-backed source must satisfy —
+`LLMRequest` / `LLMResponse` / `LLMUsage` validated at the boundary, the
+abstract `LLMProvider.complete(request)` and the typed
+`get_llm_provider()` accessor — plus a deterministic, network-free
+**templated** demo registered under `("llm", "demo")` through the normal
+M021 registry path.
+
+#### Why This Milestone Exists
+M041 turns a `FarmDecision` into a prompt and must get back one
+canonical shape of text it can validate and serve; M042 swaps in a live
+model behind the same ABC without touching M041; M043 serves that text
+and M050 renders it. The family flag (`llm_provider`, M002) and the
+`KNOWN_FAMILIES` slot have existed since M021 — this milestone fills
+them, exactly as M036 did for `disease`.
+
+#### Files Expected to Be Created
+- `src/providers/llm.py` (models, ABC, typed getter)
+- `src/providers/llm_demo.py`
+- `tests/providers/test_llm.py`
+
+#### Files Expected to Be Modified
+- `src/providers/__init__.py` (contract exports + one registration import)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None. No table, no endpoint, no persistence — advisory text is stored
+only by a milestone that asks for it (none does yet).
+
+#### API Changes
+None. The provider is consumed by M041's service and exposed by M043.
+
+#### External Dependencies
+None (pydantic + stdlib). Deliberately **no** HTTP client here: M042's
+live provider owns its own pooled `httpx.AsyncClient`, the way M024 did.
+
+#### Design Decisions
+- **One round-trip, no streaming, no chat history.** `complete(request)`
+  → `LLMResponse`: M041 asks one question and gets one answer.
+  Streaming or multi-turn messages can arrive as optional fields later
+  without breaking this contract; nothing in M041–M043 needs them.
+- **`system` = instructions, `prompt` = content.** The split is what
+  makes the demo honest: the demo renders **only `prompt`** (the facts
+  a farmer should read) and drops `system` (the instructions to the
+  model). A templated demo must never quote instructions back as advice,
+  so M041 puts every fact it wants displayed into `prompt`.
+- **The demo is a fixed template, not a model:** a seeded opening line
+  plus the caller's `prompt`, word-truncated to the caller's own budget.
+  It cannot invent agronomic claims — the request is its only source of
+  facts.
+- **Budget = `max_tokens × CHARS_PER_TOKEN (4)`.** `max_tokens` bounds
+  the demo's output the way it bounds a live model's, through a
+  documented 4-chars-per-token heuristic; truncation at a word boundary
+  yields `finish_reason="length"`, otherwise `"stop"`.
+- **Determinism from the request itself** (`request_seed`: sha256 of
+  system + prompt + max_tokens + temperature) — the same request gives
+  byte-identical text, and temperature only picks *which* fixed opening
+  is used (a template has no other use for it). Documented behavior:
+  opening drawn from a 3-line vocabulary; `prompt` echoed verbatim when
+  it fits the budget.
+- **Usage is an estimate in demo mode** (`ceil(chars / 4)` per side,
+  `total = prompt + completion`); M042 maps whatever its upstream
+  reports. No sum invariant on the model, so a live provider is never
+  forced to contradict its upstream's numbers.
+- **Bounds are validated at construction:** `prompt` 1–16 000 chars and
+  not blank, `system` ≤ 4 000, `max_tokens` 1–8192 (default 2048),
+  `temperature` 0–1 (default 0.2), `text` 1–65 536, usage ≥ 0,
+  `finish_reason ∈ {stop, length}`. A live provider parsing an upstream
+  payload into these models gets a `ValidationError`, which **it** maps
+  to `ProviderResponseInvalid` at its boundary (M036 rule).
+- **No `ValueError` at request time** — a bad request is a
+  `ValidationError` from the pydantic model (caller bug, caught before
+  any upstream is contacted). M036's empty-payload `ValueError` exists
+  only because bytes carry no model; here the request *is* a model.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/providers/llm.py`: models, ABC, getter.
+3. `src/providers/llm_demo.py`: `@register` demo provider.
+4. `src/providers/__init__.py`: exports + registration import.
+5. `tests/providers/test_llm.py`.
+6. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+`tests/providers/test_llm.py` (pure unit — no DB, no network):
+- [x] registered through the normal settings path: `get_provider("llm")`
+  resolves the demo (default flag), typed getter returns `LLMProvider`,
+  family/mode/name correct, registry caches one instance;
+  `get_llm_provider(mode="live")` → `ProviderNotRegistered` (M042 not
+  built).
+- [x] determinism: identical request → identical text/usage/
+  finish_reason; different `prompt` → different text; `request_seed`
+  differs when only `temperature` changes.
+- [x] templating: `system` never appears in the output; `prompt` quoted
+  verbatim when it fits the budget; opening comes from `OPENINGS`.
+- [x] budget: small `max_tokens` → word-boundary truncation,
+  `finish_reason == "length"`, output shorter than the prompt; large →
+  `"stop"`.
+- [x] usage: non-negative ints, `total == prompt + completion`, estimates
+  match `ceil(chars / 4)`.
+- [x] contract validation: blank prompt, over-long prompt/system/text,
+  `max_tokens` and `temperature` out of range, negative usage, unknown
+  `finish_reason` → `ValidationError`.
+- [x] sweep: ≥ 60 distinct requests → every output within the documented
+  shape (non-empty text, `source ==` demo name, at least two different
+  openings, at least one truncation, at least one `"stop"`).
+
+#### Verification Commands
+```bash
+uv run pytest tests/providers/test_llm.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No live model, no HTTP call, no API key handling (M042, 🔒); no prompt
+construction from `FarmDecision`, no advisory phrasing, no output
+validation policy (M041); no endpoint (M043), no persistence, no
+streaming, no stored token accounting.
+
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED with live dev DB (65432) — ruff
+  format OK (130 files), ruff check OK, mypy OK (128 sources), pytest
+  **639 passed / 0 skipped** (+24 new `test_llm.py`). Bandit `-r -ll`
+  on `src` + `workers` = 0 findings; pip-audit clean. **No new
+  dependencies** — pydantic + stdlib only, so D8's pin/audit/record
+  checklist had nothing to record.
+- **Files:** created `src/providers/llm.py`,
+  `src/providers/llm_demo.py`, `tests/providers/test_llm.py`; modified
+  `src/providers/__init__.py` (contract exports, one registration
+  import, `__all__`) and `MILESTONES.md`.
+- **Findings:**
+  - `llm` was the last `KNOWN_FAMILIES` slot with no contract behind it
+    — and it needed **zero config work**: the `llm_provider` flag has
+    existed since M002 and `.env.example` already documents
+    `LLM_PROVIDER=demo`. Reserving slots early (M021/M002) again paid
+    for itself, exactly as M036 noted for `disease`.
+  - **The `system`/`prompt` split is the honesty seam.** The demo has
+    no model, so it renders `prompt` and drops `system`: M041 must put
+    every farmer-visible fact in `prompt` and keep instructions in
+    `system`, otherwise a demo run would quote the prompt *instructions*
+    back as advice. Contract rule, not a preference — tested.
+  - **No `total == prompt + completion` invariant on `LLMUsage`.** A
+    live upstream (M042) is never forced to contradict its own numbers;
+    the demo computes the sum itself.
+  - Word-boundary truncation needed a **double fallback**: `rfind(" ")`
+    over a tiny budget returns `0`/`-1`, and slicing the leading spaces
+    of a prompt can produce an empty body — fall back to the raw
+    prefix, then to the header alone (`LLMResponse.text` stays ≥ 1 char
+    because the opening line always renders).
+  - `max_tokens` default 2048 → an 8192-char demo budget. M041's prompt
+    must fit that budget or accept `finish_reason="length"` truncation
+    in demo mode (the flag is reported, never silent).
+  - The demo is seeded **from the request** (`system` + `prompt` +
+    `max_tokens` + `temperature`), so `temperature` only rotates three
+    fixed openings — documented, tested (`request_seed` differs per
+    field), and deliberately unable to vary the *content*.
+- **Not built (per spec):** no live model or key handling (M042, 🔒),
+  no prompt construction from `FarmDecision` / advisory phrasing (M041),
+  no endpoint (M043), no persistence, no streaming.

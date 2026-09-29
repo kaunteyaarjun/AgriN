@@ -30,6 +30,14 @@ from src.providers.errors import (
     ProviderResponseInvalid,
     ProviderUnavailable,
 )
+from src.providers.llm import (
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    LLMUsage,
+    get_llm_provider,
+)
+from src.providers.llm_demo import DemoLLMProvider  # noqa: F401  (registers on import)
 from src.providers.registry import ProviderRegistry, default_registry, get_provider, register
 from src.providers.satellite import (
     SatelliteProvider,
@@ -49,12 +57,17 @@ __all__ = [
     "BaseProvider",
     "DISEASE_CATALOG",
     "DemoDiseaseProvider",
+    "DemoLLMProvider",
     "DemoSatelliteProvider",
     "DemoSoilProvider",
     "DemoWeatherProvider",
     "DiseaseCandidate",
     "DiseaseDetection",
     "DiseaseProvider",
+    "LLMProvider",
+    "LLMRequest",
+    "LLMResponse",
+    "LLMUsage",
     "LiveSatelliteProvider",
     "LiveWeatherProvider",
     "ProviderError",
@@ -70,6 +83,7 @@ __all__ = [
     "WeatherReading",
     "default_registry",
     "get_disease_provider",
+    "get_llm_provider",
     "get_provider",
     "get_satellite_provider",
     "get_soil_provider",
