@@ -77,6 +77,7 @@ Last test result: "pytest = 594 passed (disease-engine 18, engines-health 38, re
 | M034 | `66b26a2` |
 | M035 | `998d2eb` |
 | M036 | `980298e` |
+| M037 | `e15b3f8` |
 
 ## Notes / findings
 
