@@ -75,6 +75,7 @@ Last test result: "pytest = 564 passed (images-API 10, recommend 22, risk 27, en
 | M032 | `3acd7f9` |
 | M033 | `9a494b9` |
 | M034 | `66b26a2` |
+| M035 | `998d2eb` |
 
 ## Notes / findings
 
