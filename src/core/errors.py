@@ -90,6 +90,30 @@ class Conflict(AppError):
     message = "The request conflicts with the current state."
 
 
+class PayloadTooLarge(AppError):
+    status_code = 413
+    error_code = "payload_too_large"
+    message = "The uploaded file is too large."
+
+
+class ImageTooLarge(AppError):
+    status_code = 413
+    error_code = "image_too_large"
+    message = "The image dimensions are too large."
+
+
+class UnsupportedMediaType(AppError):
+    status_code = 415
+    error_code = "unsupported_media_type"
+    message = "The media type is not supported."
+
+
+class InvalidImage(AppError):
+    status_code = 422
+    error_code = "invalid_image"
+    message = "The image file is corrupt or invalid."
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach the AgriN exception handlers to ``app``."""
 

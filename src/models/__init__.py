@@ -11,6 +11,7 @@ from src.models.farm import Farm
 from src.models.farm_signal_cache import FarmSignalCache
 from src.models.farmer import Farmer
 from src.models.plot import Plot
+from src.models.plot_image import PlotImage
 from src.models.plot_state import GROWTH_STAGES, PlotState
 from src.models.satellite_observation import SatelliteObservation
 from src.models.soil_observation import SoilObservation
@@ -24,6 +25,7 @@ __all__ = [
     "Farmer",
     "GROWTH_STAGES",
     "Plot",
+    "PlotImage",
     "PlotState",
     "SatelliteObservation",
     "SoilObservation",

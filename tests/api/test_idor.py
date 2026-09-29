@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -187,8 +188,9 @@ def _inventory() -> list[tuple[str, str]]:
 
 def _bind(path: str) -> str:
     """Replace every {param} with a valid dummy UUID (so a 401, not a 422,
-    is what the inventory test measures)."""
-    return path.format(farmer_id=uuid.uuid4(), farm_id=uuid.uuid4(), plot_id=uuid.uuid4())
+    is what the inventory test measures). Any new path parameter is
+    covered automatically — only UUID-shaped params exist today."""
+    return re.sub(r"\{(\w+)\}", lambda _match: str(uuid.uuid4()), path)
 
 
 # ---------------------------------------------------------------------------

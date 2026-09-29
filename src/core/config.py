@@ -9,6 +9,7 @@ in ``repr``/``str`` output.
 from __future__ import annotations
 
 import functools
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
@@ -50,6 +51,11 @@ class Settings(BaseSettings):
     soil_provider: ProviderMode = "demo"
     disease_provider: ProviderMode = "demo"
     llm_provider: ProviderMode = "demo"
+
+    # M035 image uploads: hard limits for the one untrusted-bytes entry point.
+    upload_dir: Path = Path("var/uploads")
+    upload_max_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
+    upload_max_pixels: int = Field(default=25_000_000, gt=0)
 
     @field_validator("cors_origins", mode="before")
     @classmethod

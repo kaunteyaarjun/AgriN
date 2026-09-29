@@ -55,7 +55,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M033 | Farm risk engine (deterministic scoring) | P0 | M031, M032 | done |
 | M034 | Crop recommendation engine (rule-based) | P0 | M031, M032 | done |
 | **Disease diagnosis** | | | | |
-| M035 | Image upload endpoint (MIME/size/decompression limits) | P0 | M016 | not-started |
+| M035 | Image upload endpoint (MIME/size/decompression limits) | P0 | M016 | done |
 | M036 | Disease provider interface + demo provider | P0 | M021, M035 | not-started |
 | M037 | Context-aware disease assessment (confidence + farm-state blend) | P0 | M036, M019, M032 | not-started |
 | M038 | Disease provider live model integration | P1/P2 | M036 | not-started |
@@ -5398,3 +5398,231 @@ documented limitation), no scheduling or cron.
 - **Not built (per spec):** no thresholds of its own, no risk scoring,
   no disease logic, no LLM phrasing, no persistence/endpoint, no
   forecast logic, no stage-aware curves.
+
+### M035 — Image upload endpoint (MIME/size/decompression limits)
+
+**Priority:** P0 **Depends On:** M016
+**Status:** done
+
+#### Objective
+`POST /api/v1/farms/{farm_id}/plots/{plot_id}/images` (multipart) that
+accepts one photo under hard limits — ≤ 5 MB bytes, ≤ 25 megapixels,
+JPEG/PNG/WebP confirmed by **magic bytes, never the client's
+`Content-Type`** — stores it under a server-generated random filename,
+records a `plot_images` row, and serves it back with `GET`
+(`.../images/{image_id}`) plus a `.../images` list, all under M016's
+ownership matrix.
+
+#### Why This Milestone Exists
+M036's disease provider needs a real file on disk to read, M037 needs
+an image id to attach a diagnosis to, and M049 shows the picture in a
+browser. Upload is the only place in the system where **untrusted
+bytes** enter, so its limits get a milestone of their own (the roadmap
+named it that way) instead of hiding inside the disease feature.
+
+#### Files Expected to Be Created
+- `src/models/plot_image.py` (ORM model)
+- `alembic/versions/0010_plot_images.py` (hand-written migration)
+- `src/api/v1/images.py` (router)
+- `tests/api/test_images.py`
+
+#### Files Expected to Be Modified
+- `src/models/__init__.py`, `src/api/v1/__init__.py` (registration)
+- `src/core/errors.py` (413/415/422 subclasses for image failures)
+- `src/core/config.py` (`upload_dir`, `upload_max_bytes`,
+  `upload_max_pixels`)
+- `pyproject.toml` (**two new runtime deps:** `python-multipart`,
+  `Pillow`)
+- `.gitignore` (ignore `var/`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+New table `plot_images` (migration `0010`, hand-written per the
+standing rule): `id` UUID PK, `plot_id` UUID FK → `plots.id`
+`ON DELETE CASCADE`, `uploaded_by` UUID FK → `users.id` (nullable —
+seeds/workers may upload), `original_name` String(255) nullable
+(display only, basename-capped), `content_type` String(40) (**sniffed**),
+`size_bytes` Integer, `stored_name` String(64) (server-generated
+`{uuid}.{ext}` — no path segments, no user input), `created_at`
+timestamptz default now(). Index on `plot_id`.
+
+#### API Changes
+| Verb | Route | Success | Failures |
+|---|---|---|---|
+| POST | `/api/v1/farms/{farm_id}/plots/{plot_id}/images` | 201 `ImageRead` | 401 anon · 403 officer · 404 non-owner farmer / unknown plot · 413 `payload_too_large` (> 5 MB) · 413 `image_too_large` (> 25 MP) · 415 `unsupported_media_type` · 422 `invalid_image` (corrupt) |
+| GET | `.../images/{image_id}` | 200 file bytes | 401 · 403 · 404 (image not in that plot → 404, no oracle) |
+| GET | `.../images` | 200 `ImageList` | 401 · 403 · 404 |
+
+Authz reuses `_authorized_plot(for_write=)` from `plots.py` (private
+import — the established pattern): write verbs owner/admin, reads any
+of owner/admin/officer, non-owner farmer → 404.
+`ImageRead = {id, plot_id, content_type, size_bytes, original_name,
+created_at, url}` where `url` is the GET path (what M049 renders).
+
+#### External Dependencies (new, pinned, why)
+- `python-multipart` — FastAPI parses `multipart/form-data` and
+  produces `UploadFile` only with it; no alternative without rolling
+  our own parser (rejected: security-sensitive reinvention).
+- `Pillow` — magic-byte sniffing (`Image.open` reads the header only),
+  explicit pixel-dimension check before any decode, `verify()` to
+  reject truncated/corrupt payloads. The stdlib has no image decoder.
+Both pinned exactly like every other runtime dep; `bandit` +
+`pip-audit` re-run before commit.
+
+#### Service Contract
+```python
+# src/core/config.py
+upload_dir: Path = Path("var/uploads")  # gitignored; tests point it at tmp_path
+upload_max_bytes: int = 5 * 1024 * 1024  # 5 MB
+upload_max_pixels: int = 25_000_000  # 25 MP, checked pre-decode
+
+# src/api/v1/images.py
+ALLOWED_FORMATS: dict[str, str] = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
+
+
+class ImageRead(BaseModel):
+    id: uuid.UUID
+    plot_id: uuid.UUID
+    content_type: str  # sniffed: image/jpeg | image/png | image/webp
+    size_bytes: int
+    original_name: str | None
+    created_at: datetime
+    url: str  # GET path for the frontend
+
+
+class ImageList(BaseModel):
+    items: list[ImageRead]
+    total: int
+```
+
+#### Security / Validation Decisions (the point of this milestone)
+1. **Authz before bytes** — 401/403/404 decisions never touch the body.
+2. **Size first, parse second:** `read(max_bytes + 1)` → 413, so a
+   giant body never gets buffered whole.
+3. **Sniff, don't trust:** `Image.open(BytesIO(data)).format` must be
+   `JPEG`/`PNG`/`WEBP` → else 415. The stored `content_type` comes
+   from the sniff, not the request (a PNG sent as `image/jpeg` is
+   stored as `image/png`).
+4. **Pixel cap before decode:** header width×height > 25 MP → 413
+   `image_too_large` (this is the decompression-bomb guard; Pillow's
+   own `MAX_IMAGE_PIXELS` threshold is far higher and only warns).
+5. **`verify()`** catches truncated/corrupt payloads → 422
+   `invalid_image`.
+6. **Storage:** `{uuid4}.{ext}` under `settings.upload_dir`
+   (mkdir'd on demand). User filename never touches the path;
+   `original_name` is basename-stripped and length-capped, kept for
+   display only. Random uuid4 names are unguessable and traversal-proof.
+7. **Serving:** `FileResponse` with the sniffed content type plus
+   `X-Content-Type-Options: nosniff`; same ownership check as reads.
+8. **No re-encode, no EXIF strip** (documented: bytes are stored as
+   received after validation; virus scanning is out of scope).
+
+#### Design Decisions
+- **Nested under plots like everything else** — the picture belongs to
+  a plot, and reusing `_authorized_plot` gives the exact authz matrix
+  (and 404 no-oracle behaviour) for free instead of re-deriving it.
+- **A table, not bare files** — M037 needs to reference an image id,
+  M049 needs to list them, and ownership queries need rows; the file
+  path is an implementation detail of the row.
+- **Settings-driven limits** — tests and future deployments retune
+  bytes/pixels/directory without code changes; defaults are the
+  documented demo limits.
+- **Multipart + Pillow are runtime deps** — the endpoint cannot exist
+  without them; recorded as an explicit addition (precedent D8's
+  discipline: pin exactly, audit, state it).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. Add the two dependencies (pinned) to `pyproject.toml`.
+3. Model + migration `0010`; verify `alembic upgrade head` and
+   `alembic check` are clean; `alembic downgrade base && upgrade head`
+   round-trips (migration test covers it).
+4. Errors + config additions.
+5. Router (upload/list/get) with the validation pipeline.
+6. `tests/api/test_images.py`.
+7. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+`tests/api/test_images.py` (mirrors `test_plots.py` fixtures; needs the
+dev DB, skips without it):
+- [x] upload happy path: 201, `ImageRead` fields correct, row exists,
+  file exists under `upload_dir` with a random server-generated name,
+  `original_name` preserved for display.
+- [x] sniff is authoritative: PNG bytes declared as `image/jpeg` are
+  stored as `image/png`.
+- [x] GET round trip: bytes identical to upload, sniffed content type,
+  `X-Content-Type-Options: nosniff` present.
+- [x] list returns the plot's images with `url`, `total`.
+- [x] authz matrix on both verbs: anon → 401, officer → 403,
+  non-owner farmer → 404, owner/admin → 2xx; unknown plot → 404;
+  another plot's image id under this plot's URL → 404.
+- [x] limits: payload > 5 MB → 413 `payload_too_large`; a small PNG
+  whose header declares > 25 MP → 413 `image_too_large`; text/GIF →
+  415 `unsupported_media_type`; truncated JPEG → 422 `invalid_image`.
+- [x] deleting a plot removes its image rows (FK CASCADE).
+- [x] no file lands outside `settings.upload_dir` (monkeypatched to
+  `tmp_path` in tests).
+
+#### Verification Commands
+```bash
+uv run alembic upgrade head && uv run alembic check
+uv run pytest tests/api/test_images.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No image re-encoding, resizing, thumbnails or EXIF stripping; no virus
+scanning; no S3/CDN or async upload job; no delete endpoint (orphaned
+files after a plot delete are a documented limitation, cleaned up in a
+later milestone); no disease classification or assessment (M036/M037);
+no rate limiting (M055); no frontend (M049).
+
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED — 564 passed / 0 skipped (121
+  files formatted, ruff clean, mypy clean on 118 sources). New
+  coverage: `tests/api/test_images.py` = 10 tests.
+- **Security:** `bandit -r -ll src workers` 0 findings; `pip-audit`
+  clean *including the two new deps* (only the local `agrin` package
+  skipped). `uv run alembic check` reports no drift; migration tests
+  round-trip `0010`.
+- **New runtime dependencies (pinned):** `python-multipart==0.0.32`
+  (FastAPI's multipart parsing) and `pillow==12.3.0` (sniff, header
+  pixel check, `verify()`). Added via `uv add`, repinned to `==` per
+  repo convention — flagged because D8's precedent treats dependency
+  changes as explicit, recorded decisions.
+- **Files:** new `src/models/plot_image.py`,
+  `alembic/versions/0010_plot_images.py`, `src/api/v1/images.py`,
+  `tests/api/test_images.py`; modified `src/models/__init__.py`,
+  `src/api/v1/__init__.py`, `src/core/errors.py` (+413 `payload_too_large`
+  / +413 `image_too_large` / +415 `unsupported_media_type` / +422
+  `invalid_image`), `src/core/config.py` (`upload_dir`,
+  `upload_max_bytes`, `upload_max_pixels`), `.gitignore` (`var/`),
+  `tests/api/test_idor.py`.
+- **Findings:**
+  - **The default-deny guard earned its keep:** the IDOR inventory
+    test crashed with `KeyError: 'image_id'` on the first run — a new
+    route had appeared that its `_bind` helper didn't know. Fixed by
+    binding *every* `{param}` with a regex, so the next endpoint can't
+    slip through the 401 sweep.
+  - **Truncated files are a 500 if you only catch
+    `UnidentifiedImageError`.** A JPEG cut in half fails inside
+    `Image.open` itself with a bare `OSError("Truncated File Read")`;
+    the test caught it (422 expected, 500 received). `_decode` now
+    maps header-level `OSError` → 422 `invalid_image`, so corruption at
+    *any* depth lands on the same code.
+  - **Authz demonstrably precedes body validation:** the inventory test
+    POSTs `{}` (JSON) to the multipart route and still gets 401 —
+    FastAPI solves security dependencies before the body, so the
+    "authz before bytes" rule holds structurally, not by luck.
+  - Pixel-cap test writes a 5001×5001 (25.01 MP) PNG in `"1"` mode —
+    ~1 KB on disk, 25 MB of pixels: exactly the decompression-bomb
+    shape the limit exists for.
+  - Orphaned files after a plot delete remain (rows cascade, bytes
+    stay in `var/uploads`) — recorded, cleanup is a later milestone.
+- **Not built (per spec):** no re-encode/resize/EXIF strip, no virus
+  scan, no S3/CDN, no delete endpoint, no disease logic, no rate
+  limiting, no frontend.

@@ -25,6 +25,9 @@ node_modules/
 web/dist/
 web/.vite/
 
+# Local upload storage (M035 image endpoint)
+var/
+
 # Editors / OS
 .idea/
 .vscode/
