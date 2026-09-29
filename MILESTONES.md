@@ -49,7 +49,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M029 | Soil ingestion service + storage table | P0 | M028, M019 | done |
 | M030 | Soil live provider | P2 | M029 | not-started |
 | **Normalization** | | | | |
-| M031 | Data normalization layer (units/timeframes → Farm State) | P0 | M023, M026, M029 | not-started |
+| M031 | Data normalization layer (units/timeframes → Farm State) | P0 | M023, M026, M029 | done |
 | **Analysis engines** | | | | |
 | M032 | Crop health analysis engine (rule-based) | P0 | M031 | not-started |
 | M033 | Farm risk engine (deterministic scoring) | P0 | M031, M032 | not-started |
@@ -4558,3 +4558,206 @@ decisions), no DB writes (M026), no unit/timeframe normalization
 - isort: `satellite_live`'s registration import sorts directly after
   `satellite_demo` and before `soil`, keeping the one-line-per-provider
   block greppable.
+
+### M031 — Data normalization layer (units/timeframes → Farm State)
+
+**Priority:** P0 **Depends On:** M023, M026, M029
+**Status:** done
+
+#### Objective
+A read-side, DB-free normalization layer that turns the raw
+`farm_signal_caches.signals` document (three provider families, raw
+provider units, raw timestamps) into canonical pydantic models the
+analysis engines consume: canonical units, documented timeframe
+conversions, physical-range plausibility, the canonical condition
+vocabulary, and per-family `age_seconds` — provenance-preserving, with
+staleness *thresholds* deliberately left to M032+.
+
+#### Why This Milestone Exists
+M023/M026/M029 all store "payload fields as fetched" and M025/M029
+both delegated quality policy to M031. Without this layer every engine
+(M032 crop health, M033 risk, M034 recommendations) would re-implement
+per-source unit/timeframe handling, and swapping demo → live providers
+would leak source quirks straight into decision logic.
+
+#### Files Expected to Be Created
+- `src/services/normalize.py`
+- `tests/services/test_normalize.py`
+
+#### Files Expected to Be Modified
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None. Pure read-side transformation of data already persisted by M019's
+cache; no migration, no endpoint, no ingestion change.
+
+#### External Dependencies
+None (stdlib + pydantic).
+
+#### Service Contract
+```python
+# src/services/normalize.py
+CANONICAL_CONDITIONS: tuple[str, ...] = (
+    "clear", "partly_cloudy", "cloudy", "light_rain", "thunderstorm")
+
+SOURCE_PROFILES: dict[str, SourceProfile]   # source -> timeframe facts
+    # demo-weather-v1           -> rainfall window 24 h
+    # open-meteo-v1             -> rainfall window 1 h
+    # demo-satellite-v1         -> ndvi support 1 day (single overpass)
+    # ornl-daac-modis-mod13q1   -> ndvi support 16 days (composite)
+    # demo-soil-v1              -> ndvi n/a, rainfall n/a (in-situ)
+
+def normalize_signals(
+    signals: Mapping[str, Any], *,
+    now: datetime | None = None,            # default datetime.now(UTC)
+    refreshed_at: datetime | None = None,   # the cache row's refreshed_at
+) -> NormalizedSignals
+
+def normalize_farm_state(
+    state: FarmStateView, *, now: datetime | None = None,
+) -> NormalizedFarmState                    # NormalizedFarmState(view, signals)
+
+class NormalizedWeather(BaseModel):
+    source: str | None
+    observed_at: datetime | None            # tz-aware UTC
+    age_seconds: int | None                 # now - observed_at (may be negative)
+    temperature_c: float | None             # deg C, -90..60
+    humidity_pct: float | None              # 0..100
+    rainfall_mm: float | None               # amount over rainfall_window_hours
+    rainfall_window_hours: int | None       # 24 | 1 | None (unknown source)
+    rainfall_mm_per_day: float | None       # amount * 24 / window; None if unknown
+    wind_speed_kmh: float | None            # >= 0
+    condition: str | None                   # canonical vocabulary, else None
+
+class NormalizedSatellite(BaseModel):
+    source: str | None
+    observed_at: datetime | None
+    age_seconds: int | None
+    ndvi: float | None                      # unitless, -1..1
+    ndvi_support_days: int | None           # temporal support of the value
+    cloud_cover_pct: float | None           # 0..100
+
+class NormalizedSoil(BaseModel):
+    source: str | None
+    observed_at: datetime | None
+    age_seconds: int | None
+    soil_moisture_pct: float | None         # 0..100
+    ph: float | None                        # 0..14
+    soil_temperature_c: float | None        # -90..60
+    nitrogen_kg_ha: float | None            # >= 0
+
+class NormalizedSignals(BaseModel):
+    weather: NormalizedWeather | None       # None when the family key is absent
+    satellite: NormalizedSatellite | None
+    soil: NormalizedSoil | None
+    refreshed_at: datetime | None
+    refreshed_age_seconds: int | None
+    unknown_families: list[str]             # non-family keys, sorted
+    malformed_families: list[str]           # family keys whose value isn't a mapping
+
+class NormalizedFarmState(BaseModel):
+    view: FarmStateView                     # plots/crops as M019 built them
+    signals: NormalizedSignals
+```
+
+#### Decisions
+- **Read-time, not write-time.** The cache stays raw exactly as M019
+  contracted ("per-provider merging is the ingestion layer's job";
+  "RAW provider units — M031 owns normalization"). No double-write, no
+  migration, no ingestion edit; normalization is a pure function of
+  (signals doc, refreshed_at, now).
+- **Profile-based timeframe conversion, never guessing.** `SOURCE_PROFILES`
+  maps a known `source` label to its timeframe facts (rainfall window,
+  NDVI temporal support). An unknown or absent source yields `None` for
+  every profile-derived field — converting without knowing the window
+  would be inventing data. This is the "timeframes" half of the
+  milestone title.
+- **Plausibility bounds are *physical*, not agronomic** (the quality
+  policy M025/M029 handed to this milestone): out-of-range → `None`,
+  because an impossible value is not data. Crop thresholds
+  (e.g. "NDVI < 0.4 is stress") are decision logic and stay in M032+.
+- **No coercion of strings/bools** — `True` or `"22.4"` in the doc is
+  not a number the layer will trust; JSONB numbers only. `bool` is
+  explicitly excluded before the `int/float` test.
+- **No staleness policy.** `age_seconds` / `refreshed_age_seconds` are
+  computed; *thresholds* stay with the engines (M019's standing rule).
+  Future `observed_at` yields a negative age rather than an error.
+- **Condition vocabulary is the platform's 5 values** (both providers
+  already fold into them); anything else normalizes to `None`.
+- **Malformed ≠ unknown:** a family key holding a non-mapping is
+  reported in `malformed_families` and read as absent; non-family keys
+  land in `unknown_families`. Both sorted, so tests are stable.
+- **Timestamps:** ISO-8601 strings as ingestion wrote them; tz-naive is
+  assumed UTC (documented), unparseable/non-str → `None`.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `normalize.py`: constants, `SourceProfile`, the three payload models,
+   `normalize_signals` (coerce → bounds → vocabulary → profile → ages).
+3. `normalize_farm_state` bundle over `FarmStateView`.
+4. Tests (pure unit, no DB — no `_db` fixture needed).
+5. Gate, docs, state, two commits (implementation + hash record).
+
+#### Testing Criteria
+`tests/services/test_normalize.py` (pure unit, DB-free):
+- [x] empty doc → every family `None`, both lists empty.
+- [x] full demo doc → round-trips canonical values; ages computed from `now`.
+- [x] rainfall windows: demo → window 24 + `mm_per_day == mm`; open-meteo →
+  window 1 + `mm_per_day == mm * 24`; unknown source → window and
+  `mm_per_day` both `None`.
+- [x] NDVI support: demo 1 d, MODIS 16 d, unknown source `None`.
+- [x] out-of-bounds → `None` for each bounded field (humidity 150, pH 15,
+  NDVI 1.5, temp 999, cloud −5, soil moisture 120, N −3, wind −1).
+- [x] `NaN`/`inf`, `True`, `"22.4"`, `null` → `None`.
+- [x] unknown condition → `None`; canonical conditions pass through.
+- [x] timestamps: aware → UTC, naive → assumed UTC, garbage/non-str →
+  `None`, missing → `age_seconds None`, future → negative age.
+- [x] family key holding a list → `malformed_families` + family `None`;
+  extra key → `unknown_families` (sorted).
+- [x] `normalize_farm_state(view)` bundles view + signals (incl. `None`
+  cache → all families `None`).
+
+#### Verification Commands
+```bash
+uv run pytest tests/services/test_normalize.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No staleness thresholds or freshness policy (M032+), no crop/soil
+decision thresholds (M032/M033/M034), no DB access (callers pass the
+doc or the `FarmStateView`), no ingestion/cache rewrites, no schema
+change, no API endpoint, no ingestion of a fourth family.
+
+#### Verification & Notes (added on completion)
+- Gate PASSED (2026-09-29, live dev DB on 65432): `ruff format --check`
+  OK (109 files), `ruff check` OK, `mypy` OK (106 source files),
+  `pytest` **467 passed / 0 skipped** (403 prior + 64 new in
+  `tests/services/test_normalize.py`); `bandit -r -ll src workers` = 0
+  findings; `pip-audit` = no known vulnerabilities (no dependency
+  added).
+- **No live check by design:** the layer is a pure function of data
+  already persisted — there is no network or DB code path to exercise.
+- **Finding:** the two weather sources really do disagree on the
+  rainfall window — demo is a 24 h accumulation, Open-Meteo's slot is
+  *current hour* — so `rainfall_mm_24h` in the cache is not
+  self-describing. The profile converts (hour × 24) and labels the
+  window instead of pretending the field name is the truth.
+- **Finding:** NASA's NDVI is a 16-day composite while the demo's is a
+  single overpass; engines comparing two farms would silently compare
+  different temporal supports. `ndvi_support_days` makes the support
+  explicit so M032/M033 can discount it rather than discover it.
+- **Finding:** `NaN`/`inf` can reach the document (Postgres `jsonb`
+  stores them, and Python arithmetic can produce them) and `True` /
+  `"22.4"` arrive if anyone hand-edits the cache — all three are
+  rejected before the range test (`_number`), which is why the bool
+  check precedes the `int | float` test and `math.isfinite` runs
+  before the bounds.
+- Deviation (harmless): the contract's family builders are written as
+  three private helpers (`_weather_family` / `_satellite_family` /
+  `_soil_family`) plus a shared `_base` (source, observed_at, age);
+  the spec showed the results, not the internals. No public surface
+  differs from the contract above.

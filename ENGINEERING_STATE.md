@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "(none in progress) — M024 and M027, the only two unblocked P1 milestones, are both done; the remaining P1s are dependency-blocked (see Next milestone). Next milestone awaits a human pick: M030 (soil live, P2) or the P0 chain starting at M031."
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029"]
-Current implementation status: "M027 done: satellite live provider (NASA MODIS NDVI) — src/providers/satellite_live.py LiveSatelliteProvider registered (\"satellite\",\"live\") against the keyless ORNL DAAC TESViS REST service (MOD13Q1, Terra 16-day 250 m). TWO-REQUEST protocol: GET /MOD13Q1/dates (global composite calendar) → newest calendar_date ≤ today, then GET /MOD13Q1/subset for that single date with a 9×9 window (km=1, 231.66 m cell). Mapping: ndvi = mean of QA-valid pixels (pixel_reliability 0/1, raw ∈ [-2000,10000]) × 0.0001 @4dp, none usable → None; cloud_cover_pct = share of the window QA-flagged cloudy (3) @1dp (documented approximation — MOD13Q1 has no cloud band); captured_at = composite day 00:00 UTC; source = ornl-daac-modis-mod13q1. Taxonomy: timeout/transport/5xx/429 → ProviderUnavailable; other 2xx-adjacent 4xx (incl. upstream plain-text 400/404, trimmed to 200 chars), empty subset (ocean), missing bands/bad types → ProviderResponseInvalid. Same client-ownership shape as M024 (pooled httpx.AsyncClient, 20 s timeout, injectable, aclose()). No new dependencies. Settings default stays demo."
+Current milestone: "(none in progress) — M031 (P0 normalization layer) is done and has unblocked the analysis engines: M032 and M034 are ready to start, M033 needs M032 as well. M030 (soil live) is still P2 and the remaining P1s stay dependency-blocked (see Next milestone)."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031"]
+Current implementation status: "M031 done: data normalization layer (units/timeframes → Farm State) — src/services/normalize.py, a read-side PURE function layer (no DB, no I/O) that turns the raw farm_signal_caches.signals document into canonical pydantic models. normalize_signals(signals, now=, refreshed_at=) → NormalizedSignals(weather|satellite|soil|refreshed_at|refreshed_age_seconds|unknown_families|malformed_families); normalize_farm_state(FarmStateView) → NormalizedFarmState(view, signals) for the engines. Units: JSONB numbers only (bool/str/list/NaN/inf rejected before bounds), physical-range plausibility → None (temp −90..60 °C, humidity/cloud/soil-moisture 0..100, pH 0..14, NDVI −1..1, rainfall/wind/N ≥ 0), condition folded to the canonical 5-value vocabulary. Timeframes: SOURCE_PROFILES maps known source → rainfall_window_hours (demo 24, open-meteo 1 → rainfall_mm_per_day = mm×24/window) and ndvi_support_days (demo 1, MODIS 16); unknown source converts nothing. Provenance: per-family source/observed_at/age_seconds (naive timestamps assumed UTC, negative age allowed) — staleness thresholds deliberately left to M032+ per M019. Cache stays raw (no write-time change, no migration, no API change)."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -18,10 +18,10 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks:
-  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M036/M037 (disease provider+assessment), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. None of their P0 predecessors (M031–M046) are started — spec them just-in-time per Section 8 before any of these can move."
-Next milestone: "Human pick required. Options in roadmap order: (a) M030 — Soil live provider (P2, depends M029 met) — completes the live-provider trio; needs a keyless soil source researched the same way M027 did; (b) the P0 demo chain: M031 normalization → M032/M033/M034 engines → M035+ disease → M039+ advisory. No unblocked P1 remains (M024 + M027 done). Prior human-confirmed ordering (2026-09-28): P0s of the provider phase first, then P1s M024/M027, then P2 M030."
-Last verification: "M027 gate PASSED with live dev DB (65432): ruff format OK, ruff check OK, mypy OK (104 files), pytest 403 passed / 0 skipped (40 new satellite-live tests); bandit -r -ll on src/providers + workers = 0; pip-audit clean (no new deps). Live (live_m027.py, real HTTP): 8/8 PASS — Nairobi ndvi 0.2731/0.0% cloud, Mombasa 0.3508/0.0%, Amazon rainforest 0.8581 (≥0.5 asserted), Oman desert 0.109 (≤0.3 asserted), Sydney 0.3947/66.7% cloud (all captured_at 2026-08-13); ocean (0,-140) → ProviderResponseInvalid; real upstream 404 → ProviderResponseInvalid with trimmed upstream text; closed port 127.0.0.1:9 → ProviderUnavailable."
-Last test result: "pytest = 403 passed (satellite-live 40, weather-live 57, soil-ingestion 11, soil 15, satellite-ingestion 11, satellite 14, weather-ingestion 10, weather-demo 14, providers 15, farm-state-api 14, farm-state-service 10, state 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+  - "P1 milestones M038, M051, M052, M053 are dependency-blocked: M038 needs M036/M037 (disease provider+assessment), M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046/M037. Their P0 predecessors M032–M046 are still unstarted (M031 now done) — spec them just-in-time per Section 8 before any of these can move."
+Next milestone: "Roadmap order: M032 Crop health analysis engine (P0, its only dependency M031 is met). M034 Crop recommendation engine (P0) is unblocked at the same time; M033 Farm risk engine needs M031 + M032, so it follows M032. M030 (soil live, P2) and the blocked P1s (M038/M051/M052/M053) remain outside the demo path. Engines are not lock-restricted, but they are architecturally significant — spec M032 just-in-time (Section 8) before coding."
+Last verification: "M031 gate PASSED with live dev DB (65432): ruff format OK (109 files), ruff check OK, mypy OK (106 files), pytest 467 passed / 0 skipped (64 new normalization tests); bandit -r -ll on src + workers = 0; pip-audit clean (no new deps). No live check by design — the layer has no network or DB code path."
+Last test result: "pytest = 467 passed (normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -220,3 +220,29 @@ Last test result: "pytest = 403 passed (satellite-live 40, weather-live 57, soil
   shipped; M038/M051/M052/M053 are blocked on unstarted P0 specs
   (M036/M037, M043/M045/M046/M050) and M030 (soil live) is P2 — the
   next milestone needs a human decision (see `Next milestone`).
+- 2026-09-29 (M031): **the cache field name is not the truth about the
+  value.** `rainfall_mm_24h` means a 24 h accumulation to the demo
+  provider but the *current hour* to Open-Meteo, and MODIS's NDVI is a
+  16-day composite while the demo's is a single overpass. Store raw
+  (per M019), then normalize through a per-source profile; never
+  convert (or compare) a payload whose window you don't know. The same
+  rule applies to any new provider: **adding a source means adding its
+  `SOURCE_PROFILES` entry**, and until you do, its timeframe-derived
+  fields stay `None`.
+- 2026-09-29 (M031): **physical range ≠ agronomic threshold.** The
+  bounds in `normalize.py` (temp −90..60 °C, pH 0..14, NDVI −1..1 …)
+  only say "this number cannot be real"; out-of-range becomes `None`
+  because an impossible value is not data. Decision thresholds
+  ("NDVI < 0.4 = stress", "pH < 5.5 = too acidic") belong to M032/M033/
+  M034 — do not move them into this layer, or the engines lose the
+  right to disagree with each other.
+- 2026-09-29 (M031): **`bool` must be excluded before `int | float`.**
+  In Python `True` is an `int`, so a truthy flag landing in the signals
+  doc would otherwise normalize as `1.0`. `_number` checks
+  `isinstance(value, bool)` first, then `math.isfinite` — copy that
+  order into any future JSONB numeric reader.
+- 2026-09-29 (M031): **no staleness policy lives here.** `age_seconds`
+  is computed (and may be negative for a future `observed_at`); the
+  *threshold* at which a signal is "stale" is a per-engine decision
+  (M019's standing rule). If two engines disagree about freshness,
+  that is a feature of their domains, not a bug to centralize.
