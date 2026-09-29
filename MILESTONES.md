@@ -53,7 +53,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **Analysis engines** | | | | |
 | M032 | Crop health analysis engine (rule-based) | P0 | M031 | done |
 | M033 | Farm risk engine (deterministic scoring) | P0 | M031, M032 | done |
-| M034 | Crop recommendation engine (rule-based) | P0 | M031 | not-started |
+| M034 | Crop recommendation engine (rule-based) | P0 | M031, M032 | done |
 | **Disease diagnosis** | | | | |
 | M035 | Image upload endpoint (MIME/size/decompression limits) | P0 | M016 | not-started |
 | M036 | Disease provider interface + demo provider | P0 | M021, M035 | not-started |
@@ -1736,7 +1736,7 @@ than WGS84 (SRID 4326).
 ### M014 — Farm CRUD API + Ownership Authorization
 
 **Priority:** P0 **Depends On:** M013, M010
-**Status:** in-progress
+**Status:** done
 
 #### Objective
 `/api/v1/farms` CRUD with GeoJSON boundary payloads (`ST_GeomFromGeoJSON`
@@ -5007,7 +5007,7 @@ thresholds.
 ### M033 — Farm risk engine (deterministic scoring)
 
 **Priority:** P0 **Depends On:** M031, M032
-**Status:** in-progress
+**Status:** done
 
 #### Objective
 A deterministic farm-level risk score (0–100, band `low` / `moderate`
@@ -5183,3 +5183,218 @@ API endpoint, no recomputation of M032's thresholds, no LLM.
 - **Not built (per spec):** no weights/probabilities, no per-plot risk,
   no persistence, no API — consumers arrive with M048 (dashboard) and
   M039 (decision aggregation).
+
+### M034 — Crop recommendation engine (rule-based)
+
+**Priority:** P0 **Depends On:** M031, M032 (dependency note below)
+**Status:** done
+
+#### Objective
+Turn the farm's normalized signals and M032's per-plot health verdicts
+into a deterministic, flat list of actionable recommendations —
+`irrigate`, `apply_nitrogen`, `hold_field_work`, … — one per bad
+factor, plus the farm-level data-quality nudges (stale/missing signal
+families, unregistered plots) that say *why* advice is thin. Structured
+for M039 to aggregate and M041 to phrase.
+
+#### Why This Milestone Exists
+Health says what a plot *is*, risk says what the farm *faces* — neither
+says what to *do*. M039's decision engine needs one canonical
+"recommended actions" input and M041's advisory generation needs the
+same list to build its prompt, so the advice a farmer reads has a
+single source instead of re-derived rules per endpoint.
+
+#### Files Expected to Be Created
+- `src/engines/recommend.py`
+- `tests/engines/test_recommend.py`
+
+#### Files Expected to Be Modified
+- `src/engines/__init__.py` (exports)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes / API Changes / Frontend Changes
+None. No table, no endpoint, no persistence.
+
+#### External Dependencies
+None (pydantic + stdlib).
+
+#### Dependency note (documented deviation)
+The roadmap listed `Depends On: M031` — that row was written before
+M032 existed. Knowing that 18 % soil moisture needs *irrigation* is
+exactly M032's agronomy (`CropProfile` thresholds + `crop_profile_for`),
+and M033 already set the precedent of reading it rather than restating
+it: a second copy of the thresholds would drift the moment a profile
+changes. Roadmap row updated to `M031, M032`.
+
+#### Service Contract
+```python
+# src/engines/recommend.py
+RECOMMENDATION_PRIORITY: tuple[str, ...] = ("urgent", "soon", "routine")
+RECOMMENDATION_CATEGORIES: tuple[str, ...] = (
+    "irrigation", "drainage", "fertility", "soil_amendment",
+    "weather_protection", "field_operation", "scouting",
+    "record_keeping", "data_quality", "monitoring",
+)
+
+RECOMMENDATION_ORDER: tuple[str, ...] = (   # canonical code order;
+    "set_crop_plan", "irrigate", "improve_drainage",   # doubles as the
+    "apply_nitrogen", "raise_ph", "lower_ph",          # tie-break sort key
+    "heat_protection", "frost_protection", "hold_field_work",
+    "inspect_crop", "refresh_signals", "ingest_missing_signals",
+    "continue_as_planned",
+)
+RECOMMENDATION_SPECS: dict[str, tuple[str, str]] = {}  # code → (category, title)
+
+class Recommendation(BaseModel):
+    code: str                    # one of RECOMMENDATION_ORDER
+    category: str                # one of RECOMMENDATION_CATEGORIES
+    priority: str                # urgent | soon | routine
+    title: str                   # short imperative, family interpolated
+    detail: str                  # evidence; factor items reuse M032's sentence
+    plot_id: uuid.UUID | None    # None = farm-level item
+    plot_name: str | None
+
+class FarmRecommendations(BaseModel):
+    farm_id: uuid.UUID
+    recommendations: list[Recommendation]   # flat, sorted (rule below)
+    actionable: int                         # items excluding continue_as_planned
+    plot_count: int
+    computed_at: datetime
+
+def recommend_farm_actions(
+    state: NormalizedFarmState,
+    health: FarmHealth,
+    *,
+    now: datetime | None = None,
+) -> FarmRecommendations    # ValueError when health/state farm_ids differ
+```
+
+Rule table — one action per M032 factor verdict, **no new thresholds**:
+
+| factor verdict (M032) | code | priority |
+|---|---|---|
+| moisture < attention_min (drought) | `irrigate` | stress → `urgent`, attention → `soon` |
+| moisture > attention_max (waterlogging) | `improve_drainage` | same |
+| nitrogen below attention | `apply_nitrogen` | same |
+| pH below / above band | `raise_ph` / `lower_ph` | same |
+| temperature above / below band | `heat_protection` / `frost_protection` | same |
+| rainfall above attention | `hold_field_work` | same |
+| ndvi below watch | `inspect_crop` | same |
+| plot has no crop state | `set_crop_plan` | `soon` |
+| signal family stale (M032's list) | `refresh_signals` (one per family) | `soon` |
+| signal family never ingested | `ingest_missing_signals` (one per family) | `soon` |
+| plot registered, level `healthy`, no unknown factor | `continue_as_planned` | `routine` |
+
+Sort order: `priority` (`urgent` < `soon` < `routine`), then
+`RECOMMENDATION_ORDER` index, then `plot_name` — fully deterministic.
+
+#### Design Decisions
+- **Reuse M032's thresholds and evidence, never restate them** — same
+  rule as M033: a factor-derived item's `detail` *is* the
+  `HealthFactor.detail` sentence, and direction (drought vs
+  waterlogging, heat vs cold) comes from the plot's own `CropProfile`.
+- **`continue_as_planned` only when `level == "healthy"` *and* every
+  factor is known.** A plot whose signals are stale or missing gets no
+  reassurance at all (M032's "absence of evidence is never evidence of
+  health" — a healthy rollup over three known factors says nothing
+  about the blind fourth); the farm-level `refresh_signals` /
+  `ingest_missing_signals` items carry the explanation instead.
+- **Input shape matches M033** (`state`, `health`, `now`) so M039
+  calls three pure functions with one signature. Risk itself is not an
+  input — advice must not be pre-scored; M039 combines them.
+- **Farm-level for data quality, plot-level for agronomy:** `plot_id is
+  None` marks the boundary; each stale or missing family is its own
+  item so counts stay meaningful.
+- **Flat list, not nested by plot** — the engine owns ordering, not
+  grouping; M039/M041/M050 group however they render.
+- **Bounded output:** ≤ 7 agronomy items per plot (one per factor) + at
+  most one `set_crop_plan`, plus one item per stale/missing family.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `recommend.py`: constants + spec table, DTOs, per-plot factor
+   mapping, visibility items, sort, `ValueError` guard.
+3. `tests/engines/test_recommend.py` (pure unit, no DB — raw-doc
+   builders copied from `test_risk.py`).
+4. Gate, docs, state, two commits (implementation + hash record).
+
+#### Testing Criteria
+`tests/engines/test_recommend.py` (pure unit, DB-free):
+- [x] healthy registered plot, fresh signals → exactly one
+  `continue_as_planned` (`routine`), `actionable == 0`.
+- [x] attention vs stress → `soon` vs `urgent` for the same code
+  (moisture 28 % → `irrigate/soon`, 18 % → `irrigate/urgent`).
+- [x] every rule row fires: drought → `irrigate`, waterlogging →
+  `improve_drainage`, low N → `apply_nitrogen`, low pH → `raise_ph`,
+  high pH → `lower_ph`, heat → `heat_protection`, cold →
+  `frost_protection`, heavy rain → `hold_field_work`, low ndvi →
+  `inspect_crop`.
+- [x] factor-derived `detail` equals M032's factor detail verbatim.
+- [x] plot without crop state → `set_crop_plan` and **no**
+  `continue_as_planned`.
+- [x] stale family → `refresh_signals` (one item per family, `soon`);
+  missing family → `ingest_missing_signals`; a plot with unknown
+  factors gets no reassurance item.
+- [x] one plot with several stresses → several `urgent` items, all
+  present, priority order intact.
+- [x] sort: `urgent` before `soon` before `routine`; ties by
+  `RECOMMENDATION_ORDER` then plot name; two runs identical.
+- [x] farm-level items have `plot_id is None`; plot items carry id and
+  name.
+- [x] every `code`/`category`/`priority` is drawn from the documented
+  tuples; empty farm → `recommendations == []`, `plot_count == 0`.
+- [x] mismatched `farm_id` → `ValueError`.
+
+#### Verification Commands
+```bash
+uv run pytest tests/engines -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No thresholds of its own (health owns agronomy), no risk scoring
+(M033), no disease or pest diagnosis (M036/M037), no LLM phrasing or
+tone (M041), no persistence and no endpoint (M043+), no weather
+*forecast* logic (observations only), no stage-aware curves (M032's
+documented limitation), no scheduling or cron.
+
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED — 554 passed / 0 skipped (117
+  files formatted, ruff clean, mypy clean on 114 sources). New
+  coverage: `tests/engines/test_recommend.py` = 22 tests; engines
+  total 87 (health 38, risk 27, recommend 22).
+- **Security:** `bandit -r -ll src workers` 0 findings; `pip-audit`
+  clean (only the local `agrin` package skipped). No new dependencies.
+- **Files:** new `src/engines/recommend.py`, `tests/engines/
+  test_recommend.py`; `src/engines/__init__.py` re-exports the four
+  constants, both DTOs and `recommend_farm_actions`.
+- **Design confirmation:** `detail` strings for agronomy items are
+  M032's `HealthFactor.detail` verbatim (asserted), so advice and
+  evidence can never drift; direction/thresholds come from the plot's
+  `CropProfile` and `TEMPERATURE_ATTENTION` — zero new thresholds.
+- **Findings:**
+  - The `blind` guard is doing real work: with *farm-wide* signals,
+    one stale family leaves every plot with an unknown factor, so no
+    plot can be told "no action needed" while the farm is blind — even
+    when M032's rollup still reads `healthy` (three known factors, one
+    unknown). Health and advice therefore disagree *by design* in that
+    case, and M041 should say why rather than restate `healthy`.
+  - Signals being farm-level means plot-level contrast can only come
+    from crop profiles: the ordering test contrasts maize (attention at
+    32 %) with wheat (fine at 32 %) instead of differing soil docs.
+  - `continue_as_planned` and agronomy items never coexist on one
+    plot (the level gate and the blind gate are complements), so
+    `actionable` equals the agronomy-plus-data-quality count.
+- **Dependency deviation (recorded in the spec):** roadmap listed
+  `Depends On: M031` from before M032 existed; the engine needs
+  `CropProfile` thresholds and now reads them like M033 does. Row
+  updated to `M031, M032`.
+- **Doc corrections along the way:** stale `**Status:** in-progress`
+  lines on M014 and M033 flipped to `done`.
+- **Not built (per spec):** no thresholds of its own, no risk scoring,
+  no disease logic, no LLM phrasing, no persistence/endpoint, no
+  forecast logic, no stage-aware curves.

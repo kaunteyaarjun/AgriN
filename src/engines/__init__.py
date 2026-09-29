@@ -6,8 +6,9 @@ talks to the database, the network or the clock beyond an injectable
 ``now`` — that keeps every engine answer reproducible and unit-testable
 without fixtures.
 
-M032 crop health (``health``) and M033 risk (``risk``) ship first;
-M034 recommendations and M039's decision aggregation land here too.
+Three engines ship so far: M032 health (``health``), M033 risk
+(``risk``), M034 recommendations (``recommend``); M039's decision
+aggregation lands here too.
 """
 
 from src.engines.health import (
@@ -25,6 +26,15 @@ from src.engines.health import (
     assess_plot_health,
     crop_label_for,
     crop_profile_for,
+)
+from src.engines.recommend import (
+    RECOMMENDATION_CATEGORIES,
+    RECOMMENDATION_ORDER,
+    RECOMMENDATION_PRIORITY,
+    RECOMMENDATION_SPECS,
+    FarmRecommendations,
+    Recommendation,
+    recommend_farm_actions,
 )
 from src.engines.risk import (
     BAND_THRESHOLDS,
@@ -46,20 +56,27 @@ __all__ = [
     "FACTOR_STATUSES",
     "HAZARD_FACTORS",
     "HEALTH_LEVELS",
+    "RECOMMENDATION_CATEGORIES",
+    "RECOMMENDATION_ORDER",
+    "RECOMMENDATION_PRIORITY",
+    "RECOMMENDATION_SPECS",
     "RISK_BANDS",
     "RISK_ORDER",
     "SEVERITY_POINTS",
     "STALE_AFTER_SECONDS",
     "CropProfile",
     "FarmHealth",
+    "FarmRecommendations",
     "FarmRisk",
     "HealthFactor",
     "PlotHealth",
+    "Recommendation",
     "RiskItem",
     "assess_farm_health",
     "assess_farm_risk",
     "assess_plot_health",
     "crop_label_for",
     "crop_profile_for",
+    "recommend_farm_actions",
     "risk_band",
 ]
