@@ -53,6 +53,15 @@ def test_dev_mode_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.llm_provider == "demo"
 
 
+def test_ingest_concurrency_default_and_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clean_env(monkeypatch)
+    monkeypatch.delenv("INGEST_CONCURRENCY", raising=False)
+    assert _build_settings().ingest_concurrency == 4
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, ingest_concurrency=0)  # type: ignore[call-arg]
+
+
 def test_loads_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     _clean_env(monkeypatch)
     monkeypatch.setenv("ENV", "dev")

@@ -13,6 +13,7 @@ picks the newest composite whose ``calendar_date <= today``.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 
@@ -178,6 +179,77 @@ async def test_takes_the_newest_past_composite() -> None:
     await provider_for(api_handler(dates=dates, captured=captured)).fetch(*NAIROBI)
 
     assert captured[1].url.params["startDate"] == _modis_id(LATEST_DAY)
+
+
+# ---------- calendar cache (M056) ----------
+
+
+async def test_calendar_fetched_once_across_repeated_fetches() -> None:
+    captured: list[httpx.Request] = []
+    provider = provider_for(api_handler(captured=captured))
+    await provider.fetch(*NAIROBI)
+    await provider.fetch(*NAIROBI)
+
+    assert sum(r.url.path.endswith("/dates") for r in captured) == 1
+    assert sum(r.url.path.endswith("/subset") for r in captured) == 2
+
+
+async def test_calendar_cache_is_shared_across_provider_instances() -> None:
+    first: list[httpx.Request] = []
+    await provider_for(api_handler(captured=first)).fetch(*NAIROBI)
+    assert sum(r.url.path.endswith("/dates") for r in first) == 1
+
+    # fresh instance (new client, new handler) still serves from the cache
+    second: list[httpx.Request] = []
+    reading = await provider_for(api_handler(captured=second)).fetch(*NAIROBI)
+
+    assert reading.ndvi is not None
+    assert sum(r.url.path.endswith("/dates") for r in second) == 0
+    assert sum(r.url.path.endswith("/subset") for r in second) == 1
+
+
+async def test_expired_calendar_is_refetched(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.providers import satellite_live
+
+    monkeypatch.setattr(satellite_live, "CALENDAR_TTL_S", 0.0)
+    captured: list[httpx.Request] = []
+    provider = provider_for(api_handler(captured=captured))
+    await provider.fetch(*NAIROBI)
+    await provider.fetch(*NAIROBI)
+
+    assert sum(r.url.path.endswith("/dates") for r in captured) == 2
+
+
+async def test_concurrent_first_fetches_share_one_calendar_request() -> None:
+    captured: list[httpx.Request] = []
+    provider = provider_for(api_handler(captured=captured))
+    await asyncio.gather(provider.fetch(*NAIROBI), provider.fetch(*NAIROBI))
+
+    assert sum(r.url.path.endswith("/dates") for r in captured) == 1
+    assert sum(r.url.path.endswith("/subset") for r in captured) == 2
+
+
+async def test_calendar_failures_are_never_cached() -> None:
+    failing: list[httpx.Request] = []
+    with pytest.raises(ProviderUnavailable):
+        await provider_for(api_handler(dates_status=500, captured=failing)).fetch(*NAIROBI)
+    assert sum(r.url.path.endswith("/dates") for r in failing) == 1
+
+    # cache still empty → the next fetch asks upstream again and succeeds
+    recovered: list[httpx.Request] = []
+    reading = await provider_for(api_handler(captured=recovered)).fetch(*NAIROBI)
+    assert reading.ndvi is not None
+    assert sum(r.url.path.endswith("/dates") for r in recovered) == 1
+
+
+async def test_invalid_calendar_body_is_never_cached() -> None:
+    with pytest.raises(ProviderResponseInvalid):
+        await provider_for(api_handler(dates_body=b"<html>nope</html>")).fetch(*NAIROBI)
+
+    captured: list[httpx.Request] = []
+    reading = await provider_for(api_handler(captured=captured)).fetch(*NAIROBI)
+    assert reading.ndvi is not None
+    assert sum(r.url.path.endswith("/dates") for r in captured) == 1
 
 
 # ---------- field mapping + QA filtering ----------

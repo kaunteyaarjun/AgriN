@@ -2,7 +2,8 @@
 
 ``/ready``'s success path needs the dev Postgres and SKIPs without it (same
 pattern as ``tests/core/test_db.py``); all failure/hang paths use fakes or an
-unreachable port and run without Docker.
+unreachable port and run without Docker — except M056's cancellation-residual
+probe, which deliberately hangs while holding a REAL pooled connection.
 """
 
 from __future__ import annotations
@@ -167,6 +168,38 @@ async def test_ready_unreachable_db_leaves_no_checked_out_connection(
     finally:
         await dispose_engine()
         # monkeypatch restores database_url; dispose cleared the caches.
+
+
+async def test_ready_timeout_with_real_checked_out_connection_returns_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M056 re-measures the M007-deferred residual: ``wait_for`` cancelling
+    a check that holds a REAL pooled connection mid-flight must still give
+    the connection back to the pool."""
+    if not await _db_reachable():
+        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
+
+    async def _hang_while_checked_out() -> None:
+        async with get_engine().connect() as conn:
+            await conn.execute(text("SELECT 1"))  # checked out for real...
+            await asyncio.sleep(60)  # ...and the 2 s budget expires here
+
+    monkeypatch.setattr(health, "_database_reachable", _hang_while_checked_out)
+    pool = cast(QueuePool, get_engine().pool)
+    before = pool.checkedout()
+    async with await _client() as client:
+        started = time.monotonic()
+        response = await client.get("/ready")
+        elapsed = time.monotonic() - started
+    assert response.status_code == 503
+    assert response.json() == READY_BODY_UNAVAILABLE
+    assert elapsed < health.READY_TIMEOUT_S + 2.5  # the hang never hangs us
+    # cancellation cleanup may need a tick; then the pool must be home
+    for _ in range(100):
+        if pool.checkedout() <= before:
+            break
+        await asyncio.sleep(0.01)
+    assert pool.checkedout() <= before, "readiness timeout leaked a checked-out connection"
 
 
 async def test_probes_listed_in_openapi() -> None:

@@ -78,10 +78,10 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M052 | Admin dashboard: farmer/farm oversight list | P1 | M046, M010 | not-started |
 | M053 | Admin dashboard: low-confidence disease review queue | P1 | M052, M037 | not-started |
 | **Demo data** | | | | |
-| M054 | Deterministic demo data seed script | P0 | M016, M018 | in-progress |
+| M054 | Deterministic demo data seed script | P0 | M016, M018 | done |
 | **Hardening passes** | | | | |
-| M055 | Security hardening pass (rate limits, audit log, headers, dep scan) | P0 | all API milestones | in-progress |
-| M056 | Performance & resource review pass | P0 | all service milestones | not-started |
+| M055 | Security hardening pass (rate limits, audit log, headers, dep scan) | P0 | all API milestones | done |
+| M056 | Performance & resource review pass | P0 | all service milestones | in-progress |
 | M057 | Regression suite consolidation + CI script | P0 | all | not-started |
 | **Deployment & docs** | | | | |
 | M058 | Docker-compose deployment (api+db+web) | P0 🔒 | M057 | not-started |
@@ -7388,3 +7388,222 @@ defenses.
 - Known limitation restated in code: the limiter is per-process
   (effective limit = limit × workers when multi-worker); revisit with
   a shared store if the API goes behind a public LB multi-worker.
+
+### M056 — Performance & resource review pass
+
+**Priority:** P0 **Depends On:** all service milestones
+**Status:** done
+
+#### Objective
+Measure and close the performance/resource backlog recorded since
+M026/M027/M007: collapse live satellite's two-request protocol to one
+warm upstream call per batch, restructure the three
+`ingest_*_for_all` loops to bounded-concurrent fetching over a
+strictly serial DB phase, add query-count regression budgets for the
+hot read paths, re-measure the `/ready` `wait_for` cancellation
+residual in-process, and record a resource-review inventory.
+
+#### Why This Milestone Exists
+Recorded backlog: live satellite ingest costs ~5.5 s/farm (two
+sequential upstream calls — `dates` ~2.5-4.5 s + `subset` ~3 s), so an
+N-farm live batch re-fetches the *global* MODIS calendar N times; the
+three batch loops run farms strictly sequentially with a per-farm
+centroid query each; no query-count guard exists, so an N+1
+regression in `get_farm_state` / `analyze_farm` / list endpoints
+would pass the suite; and M007's `/ready` `asyncio.wait_for`
+cancellation residual was explicitly deferred to this pass for an
+in-process re-measurement. Roadmap row: "Performance & resource
+review pass".
+
+#### Files Expected to Be Created
+- `tests/perf/test_query_budgets.py`
+
+#### Files Expected to Be Modified
+- `src/providers/satellite_live.py` (process-wide MODIS calendar cache)
+- `src/ingestion/weather.py`, `src/ingestion/satellite.py`,
+  `src/ingestion/soil.py` (fetch/persist split, bounded concurrency)
+- `src/core/config.py` (`ingest_concurrency`), `.env.example`
+- `src/api/health.py` (only if the residual proves real)
+- `tests/conftest.py` (calendar-cache reset, same shape as M055's),
+  `tests/providers/test_satellite_live.py`, `tests/ingestion/*.py`,
+  `tests/api/test_health.py`
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None — same tables, same statements; no migration.
+
+#### API Changes
+None — endpoints, payloads and statuses untouched; `/ready` keeps its
+2 s budget (only its cancellation hygiene may change).
+
+#### External Dependencies
+None new — `asyncio` only (bounded concurrency without a dependency,
+mirroring M055's no-new-dep rule).
+
+#### Design Decisions
+- **Calendar cache: process-wide, TTL 12 h, `asyncio.Lock`.** M027
+  proved `/dates` answers the *global* MODIS composite calendar (a
+  mid-ocean point returns the same 610 entries), so it is safe to
+  share across farms and provider instances. The raw `dates` list is
+  cached only after basic validation (failed/invalid responses are
+  never cached); the lock plus a double-checked read prevents a
+  thundering herd on a batch's first fetch; `day > today` filtering
+  still happens per fetch, so composite freshness is unaffected.
+  Effect: an N-farm batch issues 1 `dates` + N `subset` calls instead
+  of 2N — per-farm cost drops from ~5.5 s to the subset cost after the
+  first call. `reset_calendar_cache()` + an autouse fixture in
+  `tests/conftest.py` keep tests hermetic (M055's limiter-reset shape).
+- **Batch loops: load once, fetch bounded-concurrent, persist serial.**
+  Each `ingest_*_for_all` becomes: (1) one query loads every farm id +
+  centroid ordered by id (also removes the per-farm centroid query);
+  (2) provider fetches run under `asyncio.Semaphore(ingest_concurrency)`
+  via `asyncio.gather`; (3) readings persist serially on the caller's
+  single session. **An `AsyncSession` is never used concurrently** (it
+  is not concurrency-safe) — only the network phase overlaps.
+  Failure taxonomy, statuses, result ordering (`gather` preserves it)
+  and batch isolation stay exactly what the existing tests assert:
+  `ProviderError` → `provider_error`, anything unexpected → `failed`
+  with rollback in the persist phase, no-geo farms never reach the
+  provider. Per-farm `ingest_*_for_farm` keeps its contract (NotFound,
+  same statuses) and shares the extracted persist helper.
+- **`ingest_concurrency` setting (default 4, `ge=1`)** — a bound, not
+  a promise: it caps simultaneous upstream calls per worker so a batch
+  never hammers ORNL/Open-Meteo (the "no provider hammering" rule in
+  the M055 notes), and `concurrency=1` reproduces sequential behavior
+  for debugging. Demo providers are unaffected (no I/O).
+- **Not session-per-farm-task:** the alternative would open
+  `ingest_concurrency` pool connections, complicate rollback isolation
+  and churn the pool; the fetch/persist split gets the same wall-clock
+  win on one connection.
+- **Query budgets are regression guards, not optimization.** A
+  `before_cursor_execute` listener counts statements for
+  `get_farm_state` (documented contract: exactly 3, constant in plot
+  count — already guarded by M019), `analyze_farm`,
+  `GET /api/v1/farms`, `GET /api/v1/farms/{id}` and
+  `GET /api/v1/farms/{id}/state`; budgets are **exact measured counts
+  with zero headroom** (M019's `== 3` precedent — a new query is
+  exactly the regression this file exists to catch, so any delta must
+  be a deliberate budget edit), numbers recorded in the notes. New
+  `tests/perf/` module (cross-cuts services and API — M057's
+  consolidation decides its final shape).
+- **/ready residual re-measured the way M007 asked:** a test hangs
+  `_database_reachable` *while a real connection is checked out*
+  (sleep inside `async with engine.connect()`), lets the 2 s `wait_for`
+  budget expire, then asserts pool `checkedout()` returns to its
+  pre-test value. If a residual shows, fix the release path in
+  `health.py`; if clean, record the measurement and close the item —
+  either way the deferred note gets an answer.
+- **Resource review = inventory + record, not speculative code.**
+  What already holds (pooled `httpx` clients with `aclose`,
+  `dispose_engine` in every worker, M055's bounded limiter keys,
+  upload size/pixel caps) gets documented here; what is deferred
+  (orphaned upload bytes M035, per-process limiter) stays deferred
+  with its owner.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress (+ correct the M054/M055 rows
+   their completion passes left at `in-progress`), `uv run ruff format .`.
+2. `src/providers/satellite_live.py`: calendar cache + lock + TTL +
+   `reset_calendar_cache()`; `tests/conftest.py` reset fixture.
+3. `src/core/config.py` `ingest_concurrency` + `.env.example`.
+4. Restructure the three `for_all` loops (extract `_persist_*`).
+5. `/ready` cancellation test → measure → fix iff needed.
+6. `tests/perf/test_query_budgets.py` budgets (measure first).
+7. New tests (cache, concurrency bounds), six-step gate, spec done +
+   notes, `ENGINEERING_STATE.md`, two commits.
+
+#### Testing Criteria
+- [x] two satellite fetches hit `/dates` exactly once; TTL 0 forces a
+  refetch; concurrent first fetches fetch the calendar once (lock);
+  error/invalid responses are never cached.
+- [x] every existing `for_all` test passes unchanged (counts, statuses,
+  batch isolation, `unexpected RuntimeError` detail, no partial rows);
+  results stay in farm-id order.
+- [x] concurrency bound: a slow fake provider's max in-flight never
+  exceeds `ingest_concurrency` and is > 1 when the bound allows it;
+  `concurrency=1` runs strictly sequentially.
+- [x] single-farm `ingest_*_for_farm` contract unchanged (NotFound,
+  skip, provider_error) — existing tests untouched and green.
+- [x] query budgets hold: `get_farm_state` ≤ 3 (documented), plus
+  measured budgets for `analyze_farm` and list/detail endpoints with
+  the numbers recorded in the notes.
+- [x] `/ready` timeout answers 503 fast AND leaves the pool at its
+  pre-test checked-out count (in-process measurement of the M007
+  residual).
+- [x] `ingest_concurrency` default 4 validated `ge=1`.
+- [x] full six-step gate green (format, lint, mypy, pytest, bandit,
+  pip-audit) with the 738-test baseline plus the new tests.
+
+#### Verification Commands
+```bash
+uv run pytest tests/perf tests/providers/test_satellite_live.py tests/ingestion -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No new dependency (asyncio only — no retry libraries, no Redis, no
+httpx changes), no schema change or migration, no response caching for
+farm-state/advisory reads (M045 deliberately deferred caching — a
+different layer and decision), no new providers or upstream protocol
+changes, no parallel DB writes, no pool-size retuning without a
+measurement that demands it, no demo-seed concurrency (M054's
+sequential upserts are its contract), no frontend, no upload-cleanup
+rework (M035 note stands), no profiling/benchmark infrastructure
+(the measurements here are query counts, request counts and the
+/ready pool probe).
+
+#### Verification & Notes (added on completion)
+- **Quality gate PASSED (six steps)** with live dev DB (65432): ruff
+  format OK, ruff check OK, mypy OK, pytest **754 passed / 0 skipped**
+  (16 new: calendar cache 6, batch concurrency 4, query budgets 4,
+  /ready residual 1, `ingest_concurrency` setting 1), bandit `-r -ll`
+  `src`+`workers` = 0 findings, pip-audit clean (no new dependency).
+  Seed residue checked before the run (0 `@agrin.demo` users — M012
+  lesson). Gate ran BEFORE the commits (M044 rule).
+- **M054/M055 roadmap rows were still `in-progress`** — their spec
+  sections said `done` and both milestones were committed, but the
+  table flip was missed. Corrected in this milestone's edit pass;
+  lesson recorded in ENGINEERING_STATE (grep the table after flipping).
+- **Calendar cache:** `/dates` is fetched once per 12 h process-wide
+  instead of per farm (M027 proved the calendar is global), so an
+  N-farm live batch costs 1 `dates` + N `subset` instead of 2N —
+  per-farm cost drops from ~5.5 s to the subset cost after the first
+  fetch. Invalid/error bodies raise before the store is written, so
+  they are never cached. `reset_calendar_cache()` is an autouse
+  fixture in `tests/conftest.py`; the reset also recreates the
+  `asyncio.Lock` because loop-bound primitives must not cross
+  per-test event loops.
+- **Batch loops (all three families):** one point query (was N
+  per-farm centroid queries) → fetches under
+  `asyncio.Semaphore(ingest_concurrency)` (default 4, `ge=1`) →
+  strictly serial persist via the extracted `_persist_reading` —
+  **an `AsyncSession` is never used concurrently**. Every pre-existing
+  `for_all` test passed untouched: statuses, result order
+  (`gather` preserves farm-id order), isolation and the
+  `unexpected RuntimeError` detail are byte-identical. The rejected
+  alternative (session per farm task) would open `ingest_concurrency`
+  pool connections and complicate rollback isolation.
+- **Query budgets (new `tests/perf/`) are exact measured counts with
+  zero headroom** (M019's `== 3` precedent): `analyze_farm` 3,
+  `GET /api/v1/farms` 4 (user, profile, count, list),
+  `GET /farms/{id}` 2 (user, joined select), `GET /farms/{id}/state`
+  5 (user, authz, + get_farm_state's 3). A future legitimate query
+  change must edit the budget in the same commit. Pool pre-ping does
+  not surface at `before_cursor_execute` — budgets are stable across
+  cold/warm pools. `get_farm_state` itself was already guarded (M019).
+- **/ready residual (M007 deferral) measured in-process → CLEAN.**
+  The new test hangs the check *while holding a real pooled
+  connection* (sleep inside `async with engine.connect()`), lets the
+  2 s `wait_for` budget expire, and asserts `pool.checkedout()` returns
+  to its pre-test value — cancellation cleanup completes under
+  `wait_for`. No `health.py` change was needed; the M007 note's
+  "not reproducible" verdict had used a fake hanging engine that never
+  checks a connection out, so it never exercised the release path.
+- **Resource review inventory (recorded, no code):** httpx clients
+  pooled + `aclose` (M024/M027), `dispose_engine()` in every worker,
+  limiter key bound (M055), upload byte/pixel caps (M035). Deferred
+  items keep their owners: orphaned upload bytes (M035), per-process
+  rate limiter (M055 multi-worker note).

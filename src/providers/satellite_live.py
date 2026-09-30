@@ -5,7 +5,9 @@ Second network-backed provider — the first one that needs a
 
 1. ``GET /MOD13Q1/dates`` → the composite calendar (``{modis_date,
    calendar_date}`` entries; the list is the *global* MODIS calendar,
-   so it cannot by itself prove data exists for a point);
+   so it cannot by itself prove data exists for a point) — cached
+   process-wide for ``CALENDAR_TTL_S`` since M056: one call per batch,
+   not per farm;
 2. ``GET /MOD13Q1/subset`` for the newest ``calendar_date <= today``
    and a 9x9 pixel window around the point (``kmAboveBelow=1``,
    ``kmLeftRight=1``, 231.66 m cell).
@@ -42,10 +44,12 @@ Client ownership mirrors M024: one pooled ``httpx.AsyncClient``
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, time
 from statistics import fmean
+from time import monotonic
 from typing import Any
 
 import httpx
@@ -61,6 +65,10 @@ PRODUCT = "MOD13Q1"
 SOURCE_NAME = "ornl-daac-modis-mod13q1"
 
 TIMEOUT_S = 20.0
+CALENDAR_TTL_S = 12 * 3600.0
+"""Freshness window for the cached ``/dates`` calendar (M056): a new
+composite lands every 16 days, so half a day of staleness is free —
+while ``day > today`` filtering keeps the chosen composite honest."""
 NDVI_BAND = "250m_16_days_NDVI"
 RELIABILITY_BAND = "250m_16_days_pixel_reliability"
 KM_ABOVE_BELOW = 1
@@ -70,6 +78,24 @@ RAW_MIN, RAW_MAX = -2000, 10000  # MOD13Q1 VI valid range (scaled)
 QA_USABLE = frozenset({0, 1})  # 0 good, 1 marginal
 QA_CLOUDY = 3
 UPSTREAM_MESSAGE_MAX = 200
+
+_calendar: tuple[float, list[dict[str, Any]]] | None = None
+"""(fetched-at monotonic, raw ``dates`` entries) — process-wide (M056)."""
+
+_calendar_lock = asyncio.Lock()
+"""Collapses concurrent first fetches into one upstream ``/dates`` call."""
+
+
+def reset_calendar_cache() -> None:
+    """Drop the cached calendar and recreate the lock (M056).
+
+    Tests call this per case via ``tests/conftest.py``; recreating the
+    lock also keeps per-test event loops from inheriting a loop-bound
+    primitive.
+    """
+    global _calendar, _calendar_lock
+    _calendar = None
+    _calendar_lock = asyncio.Lock()
 
 
 @register
@@ -107,10 +133,7 @@ class LiveSatelliteProvider(SatelliteProvider):
 
     async def _latest_composite(self, lat: float, lon: float) -> dict[str, Any]:
         """Newest composite on or before today (the calendar is global)."""
-        payload = await self._get_json("dates", {"latitude": lat, "longitude": lon})
-        dates = payload.get("dates")
-        if not isinstance(dates, list) or not dates:
-            raise ProviderResponseInvalid("modis response missing a usable 'dates' list")
+        dates = await self._calendar_dates(lat, lon)
 
         today = datetime.now(UTC).date()
         best: dict[str, Any] | None = None
@@ -134,6 +157,30 @@ class LiveSatelliteProvider(SatelliteProvider):
         if best is None:
             raise ProviderResponseInvalid("modis has no composite dated on or before today")
         return best
+
+    async def _calendar_dates(self, lat: float, lon: float) -> list[dict[str, Any]]:
+        """The global ``/dates`` calendar, fetched at most once per TTL.
+
+        M056: ``/dates`` ignores the point (M027 measured the same
+        calendar for a mid-ocean location), so one process-wide entry
+        serves every farm — an N-farm batch costs one ``dates`` + N
+        ``subset`` calls instead of 2N. A double-checked lock collapses
+        a batch's concurrent first fetches into one upstream call;
+        failures and invalid bodies are never cached (they raise before
+        the store is written).
+        """
+        global _calendar
+        if _calendar is not None and monotonic() - _calendar[0] < CALENDAR_TTL_S:
+            return _calendar[1]
+        async with _calendar_lock:
+            if _calendar is not None and monotonic() - _calendar[0] < CALENDAR_TTL_S:
+                return _calendar[1]  # another fetcher won the lock
+            payload = await self._get_json("dates", {"latitude": lat, "longitude": lon})
+            dates = payload.get("dates")
+            if not isinstance(dates, list) or not dates:
+                raise ProviderResponseInvalid("modis response missing a usable 'dates' list")
+            _calendar = (monotonic(), dates)
+            return dates
 
     async def _fetch_subset(self, lat: float, lon: float, modis_date: str) -> list[dict[str, Any]]:
         payload = await self._get_json(

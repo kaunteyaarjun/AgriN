@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # M055: mount /docs, /redoc and /openapi.json (M007 status quo; turn off in prod).
     docs_enabled: bool = True
 
+    # M056 batch ingestion: max concurrent provider fetches per ingest_*_for_all
+    # run (network phase only — the DB phase stays serial; 1 = sequential).
+    ingest_concurrency: int = Field(default=4, ge=1)
+
     weather_provider: ProviderMode = "demo"
     satellite_provider: ProviderMode = "demo"
     soil_provider: ProviderMode = "demo"
