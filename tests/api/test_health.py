@@ -14,31 +14,16 @@ import time
 from collections.abc import AsyncGenerator
 from typing import cast
 
-import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.pool import QueuePool
 from src.api import health
 from src.core.config import get_settings
 from src.core.db import dispose_engine, get_engine
-from src.main import create_app
+
+from tests.conftest import _client, _db_reachable
 
 READY_BODY_UNAVAILABLE = {"status": "unavailable"}
-
-
-async def _client() -> httpx.AsyncClient:
-    transport = httpx.ASGITransport(app=create_app())
-    return httpx.AsyncClient(transport=transport, base_url="http://test")
-
-
-async def _db_reachable() -> bool:
-    try:
-        engine = get_engine()
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
 
 
 class _FailingEngine:

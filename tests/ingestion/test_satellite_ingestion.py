@@ -7,18 +7,14 @@ users (FK cascade clears farmers → farms → satellite observations/caches).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import delete, func, select, text
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
+from sqlalchemy import delete, func, select
+from src.core.db import get_sessionmaker
 from src.core.errors import NotFound
 from src.ingestion.satellite import (
     ingest_satellite_for_all,
@@ -29,7 +25,6 @@ from src.models import Farm, Farmer, FarmSignalCache, SatelliteObservation, User
 from src.providers.errors import ProviderUnavailable
 from src.providers.satellite import SatelliteProvider, SatelliteReading
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 NOW_FETCH = datetime(2026, 9, 28, 6, 0, 0, tzinfo=UTC)
 NOW_CAPTURE = datetime(2026, 9, 28, 5, 30, 0, tzinfo=UTC)  # scene seen earlier
 
@@ -81,30 +76,6 @@ class BoomSatellite(SatelliteProvider):
         if lon > 37.0:
             raise RuntimeError("kaboom")
         return SatelliteReading(fetched_at=NOW_FETCH, source=self.name, ndvi=0.41)
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
 
 
 @pytest.fixture

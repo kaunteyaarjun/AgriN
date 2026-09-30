@@ -14,26 +14,20 @@ farm_signal_caches), the same pattern as the API test modules.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
-from pathlib import Path
 
-import httpx
-import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import delete, event, select, text
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
+from sqlalchemy import delete, event, select
+from src.core.db import get_engine, get_sessionmaker
 from src.core.security import create_access_token
-from src.main import create_app
 from src.models import Farm, Farmer, Plot, User
 from src.services.analysis import analyze_farm
 from src.services.farm_state import put_signals, set_plot_state
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.conftest import _client
+
 BASE = "/api/v1/farms"
 
 # Measured budgets (M056 notes carry the run numbers). Headroom of ±0:
@@ -74,30 +68,6 @@ def _record() -> Iterator[_StatementRecorder]:
         event.remove(engine, "before_cursor_execute", recorder)
 
 
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
-
-
 async def _seed_read_world(session) -> tuple[uuid.UUID, uuid.UUID]:
     """farmer user + profile + farm + 2 plots (one state) + signals.
 
@@ -135,11 +105,6 @@ async def _cleanup(session, user_id: uuid.UUID) -> None:
     await session.execute(delete(User).where(User.id == user_id))
     await session.commit()
     await session.close()
-
-
-async def _client() -> httpx.AsyncClient:
-    transport = httpx.ASGITransport(app=create_app())
-    return httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
 def _headers(user_id: uuid.UUID) -> dict[str, str]:

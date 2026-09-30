@@ -6,48 +6,27 @@ in this module requests so its dispose teardown always runs — M008 lesson).
 
 from __future__ import annotations
 
-import asyncio
-import functools
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import httpx
 import jwt as pyjwt
 import pytest
-from alembic import command
-from alembic.config import Config
 from fastapi import Depends, FastAPI
-from sqlalchemy import delete, text, update
+from sqlalchemy import delete, update
 from src.api.deps import get_current_user
 from src.core import security
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
-from src.core.security import hash_password
+from src.core.db import get_sessionmaker
 from src.main import create_app
 from src.models import User, UserRole
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.conftest import PASSWORD, _seed_password_hash
+
 PROTECTED_PATH = "/_test_protected"
 LOGIN_PATH = "/api/v1/auth/login"
 REFRESH_PATH = "/api/v1/auth/refresh"
-PASSWORD = "Sup3rSecret-Pass!"
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
 
 
 def _app_with_protected_route() -> FastAPI:
@@ -63,21 +42,6 @@ def _app_with_protected_route() -> FastAPI:
 async def _client(app: FastAPI | None = None) -> httpx.AsyncClient:
     transport = httpx.ASGITransport(app=app or _app_with_protected_route())
     return httpx.AsyncClient(transport=transport, base_url="http://test")
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
-
-
-@functools.lru_cache(maxsize=1)
-def _seed_password_hash() -> str:
-    """One bcrypt hash per test process; reused for every seeded user."""
-    return hash_password(PASSWORD)
 
 
 @pytest.fixture

@@ -14,20 +14,12 @@ from sqlalchemy import text
 from sqlalchemy.pool import QueuePool
 from src.core.db import dispose_engine, get_db, get_engine, get_sessionmaker
 
+from tests.conftest import _db_reachable
+
 
 def _checked_out() -> int:
     """Number of connections currently checked out of the pool."""
     return cast(QueuePool, get_engine().pool).checkedout()
-
-
-async def _db_reachable() -> bool:
-    try:
-        engine = get_engine()
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
 
 
 @pytest.fixture(autouse=True)

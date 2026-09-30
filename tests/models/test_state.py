@@ -9,33 +9,25 @@ farmer → farms → plots → plot_states and farm_signal_caches).
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import Callable
 from datetime import date
-from pathlib import Path
 from typing import cast
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import (
     CheckConstraint,
     ForeignKeyConstraint,
     Table,
     delete,
     select,
-    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.schema import DefaultClause
 from sqlalchemy.sql.schema import CallableColumnDefault
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
+from src.core.db import get_sessionmaker
 from src.models import GROWTH_STAGES, Farm, Farmer, FarmSignalCache, Plot, PlotState, User
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
 
 # ---------------------------------------------------------------------------
 # Metadata (no DB)
@@ -139,30 +131,6 @@ def test_repr_never_contains_the_signals_blob() -> None:
 # ---------------------------------------------------------------------------
 # Integration (dev Postgres)
 # ---------------------------------------------------------------------------
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
 
 
 async def _seed(session) -> tuple[User, Farmer, Farm, Plot]:

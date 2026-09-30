@@ -8,21 +8,14 @@ when the database is unreachable.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from collections.abc import AsyncGenerator
-from pathlib import Path
 from typing import cast
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import Enum, Table, UniqueConstraint, delete, select, text
+from sqlalchemy import Enum, Table, UniqueConstraint, delete, select
 from sqlalchemy.exc import IntegrityError
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
+from src.core.db import get_sessionmaker
 from src.models import User, UserRole
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_users_table_declared_with_expected_columns() -> None:
@@ -61,32 +54,6 @@ def test_repr_never_contains_password_hash() -> None:
     rendered = repr(user)
     assert "PLAINTEXT-SECRET" not in rendered
     assert "password_hash" not in rendered
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    # alembic/env.py calls asyncio.run internally, so it must run off the
-    # test's event loop; ensures `users` exists regardless of test ordering.
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
 
 
 async def test_insert_and_select_round_trip(_db: None) -> None:

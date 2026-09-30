@@ -7,24 +7,18 @@ in a worker thread) and SKIP when the database is unreachable.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from collections.abc import AsyncGenerator
 from decimal import Decimal
-from pathlib import Path
 from typing import cast
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from geoalchemy2 import Geometry
 from geoalchemy2.elements import WKTElement
-from sqlalchemy import ForeignKeyConstraint, Table, UniqueConstraint, delete, func, select, text
+from sqlalchemy import ForeignKeyConstraint, Table, UniqueConstraint, delete, func, select
 from sqlalchemy.exc import IntegrityError
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
+from src.core.db import get_sessionmaker
 from src.models import Farm, Farmer, Plot, User
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 PLOT_WKT = "POLYGON((0 0,5 0,5 5,0 5,0 0))"
 
 
@@ -82,30 +76,6 @@ def test_repr_never_contains_geo_blob() -> None:
     rendered = repr(plot)
     assert "POLYGON" not in rendered
     assert "Block A" in rendered
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
 
 
 async def _seed_farm(session) -> tuple[User, Farmer, Farm]:

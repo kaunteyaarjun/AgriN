@@ -10,18 +10,22 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Generator
-from pathlib import Path
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from sqlalchemy import text
 from src.core.db import dispose_engine, get_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests.conftest import _alembic_config as _config
 
 
 def _db_reachable() -> bool:
+    """Sync probe for sync tests: runs asyncio.run and disposes the engine.
+
+    Deliberately not the async conftest helper (M057 variant): these tests
+    are sync on purpose and this finally-dispose is their only teardown.
+    """
+
     async def _probe() -> bool:
         try:
             async with get_engine().connect() as conn:
@@ -33,12 +37,6 @@ def _db_reachable() -> bool:
             await dispose_engine()
 
     return asyncio.run(_probe())
-
-
-def _config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
 
 
 @pytest.fixture(autouse=True)

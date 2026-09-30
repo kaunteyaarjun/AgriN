@@ -8,18 +8,14 @@ users (FK cascade clears farmers → farms → soil observations/caches).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import delete, func, select, text
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
+from sqlalchemy import delete, func, select
+from src.core.db import get_sessionmaker
 from src.core.errors import NotFound
 from src.ingestion.soil import (
     ingest_soil_for_all,
@@ -30,7 +26,6 @@ from src.models import Farm, Farmer, FarmSignalCache, SoilObservation, User
 from src.providers.errors import ProviderUnavailable
 from src.providers.soil import SoilProvider, SoilReading
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 9, 28, 6, 0, 0, tzinfo=UTC)
 
 POLYGON_A: dict[str, object] = {  # around 36.75, -1.29
@@ -82,30 +77,6 @@ class BoomSoil(SoilProvider):
         if lon > 37.0:
             raise RuntimeError("kaboom")
         return SoilReading(fetched_at=NOW, source=self.name, ph=6.0)
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
 
 
 @pytest.fixture

@@ -8,49 +8,10 @@ second dialect; these tests pin the envelope for all three origins
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncGenerator
-from pathlib import Path
+from tests.conftest import _client
 
-import httpx
-import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import text
-from src.core.db import dispose_engine, get_engine
-from src.main import create_app
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 LOGIN_PATH = "/api/v1/auth/login"
 MISSING_PATH = "/api/v1/does-not-exist"
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
-
-
-async def _client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app()), base_url="http://t")
 
 
 async def test_pydantic_422_uses_the_envelope(_db: None) -> None:

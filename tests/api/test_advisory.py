@@ -11,30 +11,23 @@ cleanup; farm/plot/state residue is covered by FK cascade).
 
 from __future__ import annotations
 
-import asyncio
-import functools
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
 
 import httpx
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select
 from src.ai.advisory import Advisory
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
-from src.core.security import create_access_token, hash_password
+from src.core.db import get_sessionmaker
 from src.engines import DECISION_STANCES, FarmDecision
-from src.main import create_app
 from src.models import Farm, Farmer, Plot, User, UserRole
 from src.providers.errors import ProviderResponseInvalid, ProviderUnavailable
 from src.services.farm_state import put_signals, set_plot_state
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.conftest import _client, _headers, _seed_password_hash
+
 BASE = "/api/v1/farms"
-PASSWORD = "Sup3rSecret-Pass!"
 SEED_ROLES = (
     ("alpha", UserRole.farmer),  # owner
     ("bravo", UserRole.farmer),  # other tenant
@@ -69,35 +62,6 @@ SIGNALS = {
 }
 
 
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
-
-
-@functools.lru_cache(maxsize=1)
-def _seed_password_hash() -> str:
-    return hash_password(PASSWORD)
-
-
 @pytest.fixture
 async def _users(_db: None) -> AsyncGenerator[dict[str, User], None]:
     session = get_sessionmaker()()
@@ -122,15 +86,6 @@ async def _users(_db: None) -> AsyncGenerator[dict[str, User], None]:
         await session.execute(delete(User).where(User.email.in_([u.email for u in users.values()])))
         await session.commit()
         await session.close()
-
-
-async def _client() -> httpx.AsyncClient:
-    transport = httpx.ASGITransport(app=create_app())
-    return httpx.AsyncClient(transport=transport, base_url="http://test")
-
-
-def _headers(user: User) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
 
 
 async def _profile_id(users: dict[str, User], name: str) -> uuid.UUID:

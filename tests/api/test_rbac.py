@@ -6,52 +6,31 @@ Needs the dev Postgres (skip-if-unreachable `_db` fixture, requested by the
 
 from __future__ import annotations
 
-import asyncio
-import functools
 import uuid
 from collections.abc import AsyncGenerator
-from pathlib import Path
 from typing import Annotated, cast
 
 import httpx
 import pytest
-from alembic import command
-from alembic.config import Config
 from fastapi import Depends, FastAPI
-from sqlalchemy import delete, text, update
+from sqlalchemy import delete, update
 from src.api.deps import CurrentUserDep, require_role
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
+from src.core.db import get_sessionmaker
 from src.core.errors import PermissionDenied
-from src.core.security import hash_password
 from src.main import create_app
 from src.models import User, UserRole
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.conftest import PASSWORD, _seed_password_hash
+
 ANY_PATH = "/_test_any"
 ADMIN_PATH = "/_test_admin"
 STAFF_PATH = "/_test_staff"
 LOGIN_PATH = "/api/v1/auth/login"
-PASSWORD = "Sup3rSecret-Pass!"
 ROLES = (UserRole.farmer, UserRole.extension_officer, UserRole.admin)
 FORBIDDEN_BODY = {
     "error_code": "permission_denied",
     "message": "You do not have permission to perform this action.",
 }
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
 
 
 def _app_with_gated_routes() -> FastAPI:
@@ -79,21 +58,6 @@ def _app_with_gated_routes() -> FastAPI:
 async def _client() -> httpx.AsyncClient:
     transport = httpx.ASGITransport(app=_app_with_gated_routes())
     return httpx.AsyncClient(transport=transport, base_url="http://test")
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
-
-
-@functools.lru_cache(maxsize=1)
-def _seed_password_hash() -> str:
-    """One bcrypt hash per test process; reused for every seeded user."""
-    return hash_password(PASSWORD)
 
 
 @pytest.fixture

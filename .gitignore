@@ -34,4 +34,5 @@ var/
 *.swp
 .DS_Store
 Thumbs.db
-.github
+# Local AI-tooling file (M057: workflows ARE tracked - see MILESTONES spec)
+.github/copilot-instructions.md

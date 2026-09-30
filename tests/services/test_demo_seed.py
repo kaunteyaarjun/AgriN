@@ -13,15 +13,13 @@ import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from pydantic import SecretStr
 from sqlalchemy import delete, func, select
 from src.core.config import Settings
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
+from src.core.db import dispose_engine, get_sessionmaker
 from src.core.security import verify_password
 from src.models import Farm, Farmer, FarmSignalCache, Plot, PlotState, User, UserRole
 from src.services.analysis import analyze_farm
@@ -33,7 +31,8 @@ from src.services.demo_seed import (
 )
 from src.services.farm_state import get_farm_state
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.conftest import _alembic_config, _db_reachable
+
 NOW = datetime(2026, 9, 30, 12, 0, 0, tzinfo=UTC)
 ROLE_BY_EMAIL = {
     "admin@agrin.demo": UserRole.admin,
@@ -45,21 +44,6 @@ EAST_FARM_ID = uuid.uuid5(SEED_NAMESPACE, "farm:east")
 _FIXED_USER_IDS = [
     uuid.uuid5(SEED_NAMESPACE, f"user:{key}") for key in ("admin", "officer", "maria", "joseph")
 ]
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(select(1))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
 
 
 @pytest.fixture

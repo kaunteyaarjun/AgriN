@@ -4,15 +4,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import httpx
 from fastapi.middleware.cors import CORSMiddleware
 from src.core.config import get_settings
 from src.main import create_app
 
-
-async def _client() -> httpx.AsyncClient:
-    transport = httpx.ASGITransport(app=create_app())
-    return httpx.AsyncClient(transport=transport, base_url="http://test")
+from tests.conftest import _client
 
 
 async def test_root_returns_app_metadata() -> None:

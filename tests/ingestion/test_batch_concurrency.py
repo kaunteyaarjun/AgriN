@@ -16,16 +16,12 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import delete, func, text
+from sqlalchemy import delete, func
 from src.core.config import get_settings
-from src.core.db import dispose_engine, get_engine, get_sessionmaker
+from src.core.db import get_sessionmaker
 from src.ingestion.satellite import ingest_satellite_for_all
 from src.ingestion.soil import ingest_soil_for_all
 from src.ingestion.weather import ingest_weather_for_all
@@ -34,7 +30,6 @@ from src.providers.satellite import SatelliteProvider, SatelliteReading
 from src.providers.soil import SoilProvider, SoilReading
 from src.providers.weather import WeatherProvider, WeatherReading
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 9, 28, 12, 0, 0, tzinfo=UTC)
 DELAY_S = 0.05
 
@@ -49,30 +44,6 @@ POLYGON: dict[str, object] = {
         ]
     ],
 }
-
-
-async def _db_reachable() -> bool:
-    try:
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    return cfg
-
-
-@pytest.fixture
-async def _db() -> AsyncGenerator[None, None]:
-    if not await _db_reachable():
-        pytest.skip("dev Postgres not reachable; start `docker compose up -d db`")
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-    yield
-    await dispose_engine()
 
 
 async def _seed_farms(session, count: int) -> uuid.UUID:

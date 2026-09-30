@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: agrin
+          POSTGRES_PASSWORD: agrin
+          POSTGRES_DB: agrin
+        ports:
+          - "65432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agrin -d agrin"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://agrin:agrin@localhost:65432/agrin?ssl=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --extra dev
+      # Six-step quality gate, mirrored command-for-command from
+      # scripts/check.ps1 so a green run here means a green local gate.
+      - name: ruff format (check)
+        run: uv run ruff format --check .
+      - name: ruff lint
+        run: uv run ruff check .
+      - name: mypy
+        run: uv run mypy .
+      - name: pytest
+        run: uv run pytest
+      - name: bandit
+        run: uv run bandit -r -ll src workers -q
+      - name: pip-audit
+        run: uv run pip-audit

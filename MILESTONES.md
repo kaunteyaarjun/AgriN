@@ -82,7 +82,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **Hardening passes** | | | | |
 | M055 | Security hardening pass (rate limits, audit log, headers, dep scan) | P0 | all API milestones | done |
 | M056 | Performance & resource review pass | P0 | all service milestones | in-progress |
-| M057 | Regression suite consolidation + CI script | P0 | all | not-started |
+| M057 | Regression suite consolidation + CI script | P0 | all | in-progress |
 | **Deployment & docs** | | | | |
 | M058 | Docker-compose deployment (api+db+web) | P0 🔒 | M057 | not-started |
 | M059 | Final documentation pass | P0 | M058 | not-started |
@@ -7607,3 +7607,189 @@ rework (M035 note stands), no profiling/benchmark infrastructure
   limiter key bound (M055), upload byte/pixel caps (M035). Deferred
   items keep their owners: orphaned upload bytes (M035), per-process
   rate limiter (M055 multi-worker note).
+
+### M057 — Regression suite consolidation + CI script
+
+**Priority:** P0 **Depends On:** all
+**Status:** done
+
+#### Objective
+Collapse the ~26 per-file copies of the shared test helpers
+(`_db_reachable`, `_alembic_config`, `_db`, `_client`, `_headers`,
+`_seed_password_hash`, `PASSWORD`) into `tests/conftest.py` — 754 tests
+must stay 754 (moves, not deletions) — and add
+`.github/workflows/ci.yml` running the six gate steps against a
+`postgis/postgis:16-3.4` service on port 65432.
+
+#### Why This Milestone Exists
+Every DB-touching test file re-defines byte-identical (or
+trivially-variant) helpers: 26 `_db_reachable`, 26 `_alembic_config`,
+24 `_db`, 16 `_client`, 9 `_headers`, 10 `_seed_password_hash` +
+`PASSWORD` copies — a fix must be repeated 26 times and drift is
+silent (the M055 skip-message and M056 reset changes had to be made
+everywhere at once). And the repo has no CI: `scripts/check.ps1` runs
+the six-step gate only on this machine, so nothing runs it on push.
+Roadmap row: "Regression suite consolidation + CI script".
+
+#### Files Expected to Be Created
+- `tests/__init__.py` (empty — makes `tests` a package)
+- `.github/workflows/ci.yml`
+
+#### Files Expected to Be Modified
+- `tests/conftest.py` (shared helpers + `_db` fixture)
+- ~24 test files under `tests/` (delete local copies, import shared)
+- `.gitignore` (narrow `.github` → `.github/copilot-instructions.md`)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None — the `_db` fixture runs the same `alembic upgrade head`.
+
+#### API Changes
+None.
+
+#### External Dependencies
+None new in Python; GitHub Actions uses `astral-sh/setup-uv` and the
+existing `postgis/postgis:16-3.4` image from docker-compose.
+
+#### Design Decisions
+- **`tests` becomes a package** (`tests/__init__.py`): pytest then
+  imports every module as `tests.*` from the repo root, which makes
+  `from tests.conftest import ...` work at runtime *and* under mypy.
+  The alternative (helpers importable only via pytest's per-file path
+  insertion) resolves at runtime but degrades those imports to `Any`
+  under mypy (`ignore_missing_imports`), silently losing type checks.
+- **Plain helpers in conftest, imported; `_db` as a fixture.** The
+  helpers are called as functions (135 `await _client()`, 199
+  `_headers(...)` call sites), so converting them into fixtures would
+  rewrite every test signature for no gain — they stay plain functions
+  imported with `from tests.conftest import _client, ...`; pytest
+  already has `tests.conftest` in `sys.modules`, so the import is
+  free. `_db` is only ever *requested* as a fixture, so it moves to
+  conftest with zero call-site changes.
+- **What deliberately stays local:** `_users` (every body differs —
+  email prefixes, profile seeding, rbac's `{role: email}` key type,
+  ingestion's single stub user — and fixture params would *multiply*
+  test counts, breaking the 754 invariant); `SEED_ROLES` pairs with
+  them; auth/rbac/hardening's custom `_client` apps (protected/gated
+  routes, sync client); demo_seed's `_db` (fixed-user wipe teardown —
+  shadows the conftest fixture); query_budgets' `_headers(user_id)`
+  (uuid signature); test_migrations' sync `_db_reachable` (those tests
+  are sync on purpose — alembic/env.py calls `asyncio.run` — and the
+  probe's `finally: dispose_engine()` is their only teardown, which
+  the async conftest helper must not do mid-suite; its identical
+  `_config` *was* consolidated via `from tests.conftest import
+  _alembic_config as _config`). Deviation from this milestone's
+  original "…_users fixtures… into conftest" phrasing recorded here
+  with the reason.
+- **Variant unification:** health/core's `engine = get_engine()` and
+  demo_seed's `select(1)` reachability probes collapse into the one
+  standard `text("SELECT 1")` body — same semantics (probe only);
+  models' `asyncio.run`-off-the-loop comment moves into the conftest
+  `_db` docstring where the single remaining copy lives.
+- **`.gitignore` narrowed, not deleted:** commit `a3fe3f8` ignored
+  `.github` for local tooling; M057 needs `.github/workflows/` tracked
+  (a roadmap deliverable — this answers the M011 "confirm intent
+  (ignore or track .github/)" note), so the ignore becomes
+  `.github/copilot-instructions.md`. (That file turns out to have been
+  tracked since `ddaf68f`/M001, so `a3fe3f8`'s directory ignore never
+  applied to it; the narrowed rule governs future local tool files.
+  Untracking it would be a separate human decision.)
+- **CI mirrors `check.ps1` command-for-command** (`ruff format --check
+  .`, `ruff check .`, `mypy .`, `pytest`, `bandit -r -ll src workers
+  -q`, `pip-audit`) so a green Actions run means a green local gate.
+  `uv sync --extra dev` then plain `uv run ...` (uv run syncs
+  inexact — dev extras stay, exactly this machine's setup). DB via a
+  service container on 65432 with the compose credentials and the
+  `.env` `DATABASE_URL`, so tests do not skip on CI.
+- **754 must stay 754:** consolidation is moves only — any test-count
+  delta fails this milestone.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress, `uv run ruff format .`.
+2. `tests/__init__.py`; conftest gains helpers + `_db`.
+3. Delete local copies across the files; add
+   `from tests.conftest import ...` where names remain referenced
+   (ruff F821 drives the list); `ruff check --fix` for dead imports.
+4. `.gitignore` narrow; `.github/workflows/ci.yml`.
+5. Six-step gate (754 must hold), spec done + notes,
+   `ENGINEERING_STATE.md`, two commits.
+
+#### Testing Criteria
+- [x] six-step gate green with pytest **754 passed / 0 skipped** (no
+  count change).
+- [x] `git check-ignore .github/workflows/ci.yml` reports nothing
+  (track-able) while `.github/copilot-instructions.md` stays ignored.
+- [x] `ci.yml` parses as YAML and its steps run the same
+  `uv run ...` commands as `check.ps1` (no divergent flags).
+- [x] local-variant files still pass: demo_seed wipe, auth/rbac
+  custom clients, hardening sync client, query_budgets uuid headers,
+  core/test_db autouse skip, test_migrations sync probe.
+- [x] grep shows exactly one definition of `_db_reachable`,
+  `_alembic_config`, `_db`, `_client`, `_headers` (conftest only;
+  recorded local variants excepted).
+
+#### Verification Commands
+```bash
+uv run pytest -q --co | Select-Object -Last 2
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No test deletions or merges (754 stays 754 — moves only), no `_users`
+factory/refactor (recorded above), no autouse `_db` (DB access stays
+per-test explicit so it is visible which tests need Postgres), no new
+pytest plugins or dev dependencies, no CI-only skips/xfails, no changes
+to test assertions or fixture semantics, no frontend, no badge/docs
+pass (M059).
+
+#### Verification & Notes (added on completion)
+- **Quality gate PASSED (six steps)** with live dev DB (65432): ruff
+  format OK (159 files), ruff check OK, mypy OK (156 sources), pytest
+  **754 passed / 0 skipped** — the exact pre-consolidation count, so
+  the moves-only invariant held — bandit `-r -ll` `src`+`workers` = 0
+  findings, pip-audit clean (no new dependency). Seed residue checked
+  before the run (0 `@agrin.demo` users — M012 lesson). Gate ran
+  BEFORE the commits (M044 rule) and was re-run green after the late
+  `test_migrations` alias edit.
+- **What was retired:** ~114 duplicated definitions across 27 files
+  (26 `_db_reachable`, 24 `_alembic_config`, 23 `_db` fixtures, 12
+  `_client`, 8 `_headers`, 10 `_seed_password_hash`, 10 `PASSWORD`,
+  plus test_migrations' `_config`) → 6 helpers + 1 fixture now live in
+  `tests/conftest.py`. 16 files gained `from tests.conftest import
+  ...`; the rest needed nothing because `_db` resolves ambiently as a
+  fixture. ruff `--fix` swept 241 dead imports/sort orders.
+- **Edits were audited, not eyeballed:** the removal script asserted
+  exactly-one match per pattern per file and refused otherwise; every
+  file printed its removed blocks (e.g. `test_farms: ABCDEFGR`), so a
+  silent partial removal could not slip through.
+- **`tests` is now a package:** `tests/__init__.py` makes pytest import
+  `tests.*` from the repo root, which is what lets test modules say
+  `from tests.conftest import _client` at runtime *and* under mypy.
+  Without it the import would resolve only via pytest's per-file path
+  insertion and mypy would silently type it as `Any`.
+- **The `_users` deviation, confirmed during implementation:** every
+  `_users` body differs (email prefix, profile seeding, rbac's role
+  keys, ingestion's stub user) and parameterizing the fixture would
+  MULTIPLY test counts (one test per parameter combination) — fatal
+  for the 754 invariant. They stay local, as spec'd.
+- **`.gitignore` / M011 note resolved:** the rule is now
+  `.github` → `.github/copilot-instructions.md`. Discovery: the copilot
+  file has been tracked since `ddaf68f` (M001), so `a3fe3f8`'s
+  directory ignore never applied to it — and `git check-ignore` by
+  default reports "not ignored" for TRACKED files, which made that
+  easy to miss (verified with `git ls-files .github`). Untracking it
+  is left to a human.
+- **CI is validated but has not executed:** no Actions runner on this
+  host — `ci.yml` is YAML-parsed, command-for-command identical to
+  `check.ps1`, and its env mirrors dev (compose credentials, port
+  65432, `.env`'s `DATABASE_URL` shape; `uv sync --extra dev` then
+  plain `uv run ...`, matching this machine). The first push to
+  GitHub is what actually runs it; if it reds there, fix forward in a
+  follow-up commit — do not assume green.
+- **Duplicate-definition grep now returns only** conftest's six plus
+  the recorded variants: demo_seed's `_db`, auth/rbac/hardening's
+  `_client`, query_budgets' `_headers(user_id)`, test_migrations'
+  sync-disposing `_db_reachable`.
