@@ -277,7 +277,7 @@ async def test_knob_reaches_the_engine_and_drops_the_urgent_action(
     assert changes["action_counts_delta"]["urgent"] < 0
 
 
-# ---------- the two accepted 422 flavors ----------
+# ---------- both 422 origins, one envelope (M055) ----------
 
 
 async def test_structural_errors_are_pydantic_422(_users: dict[str, User]) -> None:
@@ -293,9 +293,11 @@ async def test_structural_errors_are_pydantic_422(_users: dict[str, User]) -> No
             {"weather": "oops"},  # type: ignore[dict-item]
         )
     assert missing.status_code == 422
-    assert "detail" in missing.json()
+    assert missing.json()["error_code"] == "validation_failed"
+    assert "overrides" in missing.json()["message"]
     assert not_a_mapping.status_code == 422
-    assert "detail" in not_a_mapping.json()
+    assert not_a_mapping.json()["error_code"] == "validation_failed"
+    assert "detail" not in not_a_mapping.json()  # M055: one shape everywhere
 
 
 @pytest.mark.parametrize(

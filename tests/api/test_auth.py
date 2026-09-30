@@ -166,7 +166,7 @@ async def test_login_inactive_account_forbidden_after_password_check(
     assert response.json()["error_code"] == "account_disabled"
 
 
-async def test_refresh_returns_new_access_token(_user: tuple[str, str]) -> None:
+async def test_refresh_rotates_the_refresh_token(_user: tuple[str, str]) -> None:
     email, password = _user
     async with await _client() as client:
         tokens = await _login(client, email, password)
@@ -174,7 +174,11 @@ async def test_refresh_returns_new_access_token(_user: tuple[str, str]) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["token_type"] == "bearer"
-    assert body["refresh_token"] == tokens["refresh_token"]
+    # M055 rotation: a NEW refresh token with a NEW jti comes back
+    assert body["refresh_token"] != tokens["refresh_token"]
+    old_jti = security.decode_token(tokens["refresh_token"], "refresh")["jti"]
+    new_jti = security.decode_token(body["refresh_token"], "refresh")["jti"]
+    assert new_jti != old_jti
     claims = security.decode_token(body["access_token"], "access")
     assert claims["sub"] == security.decode_token(tokens["access_token"], "access")["sub"]
 
@@ -288,3 +292,158 @@ async def test_refresh_after_user_deleted_is_401(_user: tuple[str, str]) -> None
         response = await client.post(REFRESH_PATH, json={"refresh_token": tokens["refresh_token"]})
     assert response.status_code == 401
     assert response.json()["error_code"] == "invalid_token"
+
+
+# ---------- M055: revocation lifecycle ----------
+
+LOGOUT_PATH = "/api/v1/auth/logout"
+LOGOUT_ALL_PATH = "/api/v1/auth/logout-all"
+
+
+def _bearer(tokens: dict[str, Any]) -> dict[str, str]:
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+async def test_refresh_reuse_detection_revokes_the_whole_family(
+    _user: tuple[str, str],
+) -> None:
+    email, password = _user
+    async with await _client() as client:
+        first = await _login(client, email, password)
+        second = await client.post(REFRESH_PATH, json={"refresh_token": first["refresh_token"]})
+        assert second.status_code == 200
+        rotated = second.json()
+
+        replay = await client.post(REFRESH_PATH, json={"refresh_token": first["refresh_token"]})
+        assert replay.status_code == 401  # the revoked token came back
+
+        # reuse detection kills the attacker's freshly rotated sibling too
+        dead = await client.post(REFRESH_PATH, json={"refresh_token": rotated["refresh_token"]})
+        assert dead.status_code == 401
+
+        # revocation is not a ban: a fresh login still works
+        fresh = await client.post(LOGIN_PATH, json={"email": email, "password": password})
+        assert fresh.status_code == 200
+
+
+async def test_logout_revokes_the_presented_token(_user: tuple[str, str]) -> None:
+    email, password = _user
+    async with await _client() as client:
+        tokens = await _login(client, email, password)
+        out = await client.post(LOGOUT_PATH, json={"refresh_token": tokens["refresh_token"]})
+        assert out.status_code == 200
+        assert out.json() == {"logged_out": True}
+
+        dead = await client.post(REFRESH_PATH, json={"refresh_token": tokens["refresh_token"]})
+        assert dead.status_code == 401
+
+        # idempotent: revoking again still succeeds (no existence oracle)
+        again = await client.post(LOGOUT_PATH, json={"refresh_token": tokens["refresh_token"]})
+        assert again.status_code == 200
+
+
+async def test_logout_all_revokes_every_active_token(_user: tuple[str, str]) -> None:
+    email, password = _user
+    async with await _client() as client:
+        session_one = await _login(client, email, password)
+        session_two = await _login(client, email, password)
+
+        out = await client.post(LOGOUT_ALL_PATH, headers=_bearer(session_one))
+        assert out.status_code == 200
+        assert out.json() == {"revoked": 2}
+
+        for tokens in (session_one, session_two):
+            dead = await client.post(REFRESH_PATH, json={"refresh_token": tokens["refresh_token"]})
+            assert dead.status_code == 401
+
+
+async def test_logout_all_requires_an_access_token(_user: tuple[str, str]) -> None:
+    email, password = _user
+    async with await _client() as client:
+        tokens = await _login(client, email, password)
+        anon = await client.post(LOGOUT_ALL_PATH)
+        wrong = await client.post(LOGOUT_ALL_PATH, headers=_bearer({"access_token": "garbage"}))
+        valid = await client.post(LOGOUT_ALL_PATH, headers=_bearer(tokens))
+    assert anon.status_code == 401
+    assert anon.json()["error_code"] == "not_authenticated"
+    assert wrong.status_code == 401
+    assert valid.status_code == 200
+    assert valid.json()["revoked"] == 1  # this session's token, exactly
+
+
+# ---------- M055: rate limiting ----------
+
+
+async def test_login_rate_limit_answers_429_envelope(
+    _db: None, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    from src.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "auth_rate_limit_per_minute", 2)
+    caplog.set_level(logging.INFO, logger="agrin.audit")
+    async with await _client() as client:
+        for _ in range(2):  # counted attempts, both plain 401s
+            response = await client.post(
+                LOGIN_PATH, json={"email": "nobody@example.com", "password": "wrong-pass"}
+            )
+            assert response.status_code == 401
+        blocked = await client.post(
+            LOGIN_PATH, json={"email": "nobody@example.com", "password": "wrong-pass"}
+        )
+        unaffected = await client.get("/")  # limiter is per-bucket, not global
+    assert blocked.status_code == 429
+    body = blocked.json()
+    assert body["error_code"] == "rate_limited"
+    assert "detail" not in body
+    assert int(blocked.headers["Retry-After"]) >= 1
+    assert unaffected.status_code == 200
+    blocked_events = [
+        record
+        for record in caplog.records
+        if record.name == "agrin.audit" and record.event == "rate_limited.blocked"  # type: ignore[attr-defined]
+    ]
+    assert blocked_events and blocked_events[0].outcome == "blocked"  # type: ignore[attr-defined]
+
+
+async def test_refresh_rate_limit_is_a_separate_bucket(
+    _db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from src.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "auth_rate_limit_per_minute", 1)
+    async with await _client() as client:
+        first = await client.post(REFRESH_PATH, json={"refresh_token": "garbage"})
+        second = await client.post(REFRESH_PATH, json={"refresh_token": "garbage"})
+    assert first.status_code == 401  # bucket allows one; the token itself is bad
+    assert second.status_code == 429
+
+
+# ---------- M055: audit events ----------
+
+
+async def test_auth_lifecycle_emits_audit_events(
+    _user: tuple[str, str], caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    email, password = _user
+    caplog.set_level(logging.INFO, logger="agrin.audit")
+    async with await _client() as client:
+        tokens = await _login(client, email, password)
+        await client.post(LOGIN_PATH, json={"email": email, "password": "wrong"})
+        await client.post(REFRESH_PATH, json={"refresh_token": "garbage"})
+        await client.post(LOGOUT_PATH, json={"refresh_token": tokens["refresh_token"]})
+        await client.post(LOGOUT_ALL_PATH, headers=_bearer(tokens))
+
+    events = [record for record in caplog.records if record.name == "agrin.audit"]
+    names = {record.event for record in events}  # type: ignore[attr-defined]
+    assert "auth.login.success" in names
+    assert "auth.login.failure" in names
+    assert "auth.refresh.failure" in names
+    assert "auth.logout" in names
+    assert "auth.logout_all" in names
+    for record in events:
+        assert record.outcome in {"success", "failure", "blocked"}  # type: ignore[attr-defined]
+        assert hasattr(record, "ip")  # every auth event carries the client ip

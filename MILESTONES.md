@@ -80,7 +80,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | **Demo data** | | | | |
 | M054 | Deterministic demo data seed script | P0 | M016, M018 | in-progress |
 | **Hardening passes** | | | | |
-| M055 | Security hardening pass (rate limits, audit log, headers, dep scan) | P0 | all API milestones | not-started |
+| M055 | Security hardening pass (rate limits, audit log, headers, dep scan) | P0 | all API milestones | in-progress |
 | M056 | Performance & resource review pass | P0 | all service milestones | not-started |
 | M057 | Regression suite consolidation + CI script | P0 | all | not-started |
 | **Deployment & docs** | | | | |
@@ -7172,3 +7172,219 @@ artifacts, no frontend, no rate limiting (M055).
 - Tests skip without dev Postgres (house pattern) and scope cleanup
   to the four fixed user ids; the FK cascade removes farmers, farms,
   plots, states, signal caches. No unscoped deletes (M012/M019).
+
+### M055 — Security hardening pass (rate limits, revocation, audit, unified errors, headers, dep scan)
+
+**Priority:** P0 **Depends On:** all API milestones
+**Status:** done
+
+#### Objective
+Close the security backlog accumulated since M009 in one pass:
+in-process rate limiting on the credential endpoints, persistent
+refresh-token revocation with logout, one unified client error shape,
+structured `agrin.audit` log events, baseline security headers, a
+`/docs` kill-switch, a recorded bcrypt-pin decision, and bandit +
+pip-audit wired into the quality gate.
+
+#### Why This Milestone Exists
+Login/refresh have been unthrottled since M009 (flagged), refresh
+tokens are stateless and immortal (no logout possible), error bodies
+ship two dialects (`{detail}` vs `{error_code, message}` — M017/M020
+debt, M045 recorded both flavors), and audit trails are only generic
+`app_error` warnings. The roadmap row ("rate limits, audit log,
+headers, dep scan") plus the locked human decisions define the scope.
+
+#### Files Expected to Be Created
+- `src/core/ratelimit.py` (sliding-window limiter + dependency)
+- `src/core/audit.py` (structured auth-event helper)
+- `src/models/refresh_token.py`
+- `alembic/versions/0011_*.py` (one migration: `refresh_tokens`)
+- `tests/core/test_ratelimit.py`
+- `tests/api/test_errors.py`
+
+#### Files Expected to Be Modified
+- `src/core/security.py` (`jti` claim on refresh tokens)
+- `src/core/errors.py` (RequestValidationError + HTTPException
+  handlers; `RateLimited` error class)
+- `src/core/config.py` (`auth_rate_limit_per_minute`, `docs_enabled`)
+- `src/main.py` (security-headers middleware, docs flag)
+- `src/api/v1/auth.py` (rate limit, audit, rotation, logout,
+  logout-all)
+- `scripts/check.ps1` (bandit + pip-audit steps), `.env.example`
+- `tests/api/test_auth.py`, `tests/api/test_whatif.py`,
+  `tests/api/test_farm_state.py`, `tests/conftest.py`
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+One migration (revision 0011): table `refresh_tokens`
+— `id` uuid PK (the token's `jti`), `user_id` uuid NOT NULL FK
+`users.id` ondelete CASCADE, `issued_at` timestamptz server default
+now(), `expires_at` timestamptz NOT NULL, `revoked_at` timestamptz
+NULL, index on `user_id`. No existing table changes. Hand-review the
+autogenerate output (M008 lesson).
+
+#### API Changes
+- `POST /auth/login` and `POST /auth/refresh` gain rate limiting
+  (429 envelope + `Retry-After`).
+- `POST /auth/refresh` **rotates**: a new refresh token is returned
+  (breaking change from M009's identical-token echo — deliberately,
+  rotation is what makes revocation meaningful).
+- New `POST /auth/logout` `{refresh_token}` → revokes that token
+  (possession-based, idempotent success).
+- New `POST /auth/logout-all` (bearer access token) → revokes every
+  active refresh token of the current user.
+- **Error bodies unify to `{error_code, message}`** — pydantic 422
+  `{detail}` and Starlette route-404/405 `{detail}` flavors disappear;
+  three tests that assert `"detail"` are updated (M045's recorded
+  dual-flavor expectation resolves here, per the locked decision).
+
+#### External Dependencies
+None new — this is the point of the locked "no new dependency" call:
+the limiter is stdlib (`collections.deque` + `time.monotonic`), audit
+rides the existing M005 JSON log formatter.
+
+#### Design Decisions
+- **Sliding window, per-process, per-bucket, keyed by client IP.**
+  `SlidingWindowLimiter.record(key, now) -> allowed, retry_after`
+  keeps a deque of timestamps per key; expired entries pruned on
+  access; capacity-bounded (`MAX_KEYS`), oldest key evicted first
+  (insertion order). Dependency `rate_limit(bucket)` reads
+  `settings.auth_rate_limit_per_minute` (default 10/min, per bucket)
+  at call time. **Documented limitation: in-process state is
+  per-worker** — a multi-worker deployment needs a shared store; the
+  decision explicitly refused a Redis/new-dep solution for now.
+  Async-safe because the critical section has no awaits.
+- **Revocation = a row, rotation on every refresh.** Login inserts a
+  row; refresh looks the `jti` up: missing row → `InvalidToken`
+  (pre-M055 tokens force one re-login — documented); **revoked row →
+  reuse detected** → revoke ALL active rows for that user (theft
+  signal, OAuth BCP pattern) + audit event; expired row →
+  `InvalidToken`; active row → revoke it, issue a new pair with a new
+  `jti`. Access tokens stay stateless (15-min TTL) — out of scope,
+  documented.
+- **Logout is possession-based and idempotent** — presenting the
+  refresh token revokes it; already-revoked still succeeds (no
+  existence oracle). `logout-all` requires a valid access token and
+  reports the revoked count.
+- **Rate-limit tests need a clean slate:** in-process state would
+  leak across tests, so `tests/conftest.py` gains an autouse reset
+  fixture calling `limiter.reset()`; one test monkeypatches the
+  settings singleton (M017 pattern) to a tiny limit and asserts the
+  429 envelope + `Retry-After`.
+- **Audit = `logging.getLogger("agrin.audit")`, not a table** (locked
+  decision). Helper `audit(event, *, user_id, email, ip, outcome,
+  **fields)`; the M005 `JsonFormatter` already merges `extra` into the
+  JSON line. Events: `auth.login.success|failure`,
+  `auth.refresh.success|failure|reuse_detected`, `auth.logout`,
+  `auth.logout_all`, `rate_limited.blocked`. Failures and blocks
+  always carry the client IP; JSON encoding defuses log injection.
+- **HTTPException handler maps status → stable code** (404
+  `not_found`, 405 `method_not_allowed`, 401 `not_authenticated`,
+  403 `permission_denied`, 413 `payload_too_large`, else
+  `http_error`), echoes only Starlette's static phrases, preserves
+  `exc.headers`. RequestValidationError handler joins field errors
+  into `message` (capped) — no `detail` key anywhere anymore.
+- **Security headers** on every response: `X-Content-Type-Options:
+  nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
+  No HSTS (belongs to the TLS terminator), no CSP (the frontend,
+  M046+, owns its own policy) — both recorded as deliberate omissions.
+- **`docs_enabled` setting (default True)** keeps the M007 hackathon
+  status quo for dev; `create_app` mounts `/docs`, `/redoc` and
+  `/openapi.json` only when it is on, so prod flips one line
+  (`.env.example` documents it).
+- **bcrypt pin (D3) revisited → keep `bcrypt==4.0.1`** with
+  `passlib[bcrypt]==1.7.4`: passlib 1.7.4 breaks on bcrypt ≥ 4.1
+  (removed `bcrypt.__about__`) and passlib is unmaintained — the real
+  fix is dropping passlib, recorded as future work, not smuggled into
+  this pass. Work factor stays passlib's bcrypt default (12 rounds);
+  no dep changes, pip-audit remains clean.
+- **Gate absorbs the scans:** `scripts/check.ps1` gains `bandit -r
+  -ll src workers` and `pip-audit` steps after pytest, so every future
+  gate runs them (D8/M035 checklist becomes automatic).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. Config: `auth_rate_limit_per_minute`, `docs_enabled` +
+   `.env.example`.
+3. `src/core/ratelimit.py` + `src/core/audit.py`.
+4. Model + migration 0011 (autogenerate, hand-review).
+5. `src/core/security.py`: `jti` on refresh tokens.
+6. `src/core/errors.py`: two new handlers + `RateLimited`.
+7. `src/main.py`: headers middleware + docs flag.
+8. `src/api/v1/auth.py`: limits, audit, rotation, logout(s).
+9. `scripts/check.ps1`: bandit + pip-audit.
+10. Tests (new + updated assertions), gate, bandit, pip-audit, docs,
+    state, two commits.
+
+#### Testing Criteria
+- [x] limiter unit tests: allows `limit`, blocks `limit+1`, window
+  slides, buckets/IPs isolated, capacity eviction, injected clock.
+- [x] login and refresh return 429 `{error_code: "rate_limited"}` +
+  `Retry-After` once the (monkeypatched) limit is exceeded; other
+  routes unaffected.
+- [x] refresh rotates (new `refresh_token` ≠ old); replaying the old
+  token is 401 AND revokes the attacker's newly issued sibling
+  (reuse detection); `logout` then blocks the token; `logout-all`
+  revokes every active row for the user.
+- [x] pydantic 422, route 404 and 405 all answer
+  `{error_code, message}` — no `detail` key anywhere; AppError
+  envelopes unchanged; no internal detail leaked (M017).
+- [x] audit events appear in caplog for login success/failure,
+  refresh success/reuse, logout(s), and rate-limit blocks — with ip
+  and outcome fields.
+- [x] security headers present on success, error and health responses.
+- [x] `docs_enabled=False` app answers 404 on `/docs`, `/redoc`,
+  `/openapi.json`; default app still serves them.
+- [x] `scripts/check.ps1` runs bandit and pip-audit as gate steps.
+- [x] migration round-trip (existing `test_migrations.py`) covers
+  0011; all previously passing tests still pass (updated 3
+  `"detail"` assertions + the rotation echo assertion).
+
+#### Verification Commands
+```bash
+uv run pytest tests/core/test_ratelimit.py tests/api/test_errors.py tests/api/test_auth.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No new dependency (limiter is stdlib — the locked call), no audit
+table (locked: log events only), no access-token revocation list
+(stateless access tokens stay), no HSTS/CSP (deliberate omissions,
+documented), no login-flow changes beyond throttling/audit, no
+frontend, no SECURITY.md (M059 owns it), no IP-reputation or CAPTCHA
+defenses.
+
+#### Verification & Notes (added on completion)
+- **Quality gate PASSED with all six steps** (the first milestone
+  whose gate includes the new scans): ruff format OK (155 files),
+  ruff check OK, mypy OK (152 sources), pytest **738 passed / 0
+  skipped** (25 new: ratelimit 8, errors 5, hardening 5, auth +7,
+  security +0 net [rotation rewritten in place]), bandit `-r -ll`
+  `src`+`workers` = 0 findings, pip-audit clean. Gate ran BEFORE the
+  commits; migration 0011 verified via `upgrade → alembic check →
+  downgrade → upgrade` before tests.
+- **Breaking change recorded:** refresh now returns a NEW refresh
+  token (rotation) — `test_refresh_returns_new_access_token` became
+  `test_refresh_rotates_the_refresh_token`. Pre-M055 tokens (no
+  `jti`) get one clean 401 asking for re-login; logout allow-listed
+  in the IDOR sweep next to login/refresh (possession-based).
+- **Dependency order matters:** `_limit` is declared BEFORE
+  `SessionDep` in login/refresh so a throttled brute-force opens no
+  DB work; FastAPI solves dependencies in declaration order.
+- The unified 422 message is built from the first 5 field errors and
+  hard-capped at 512 chars — one test posts three 500-char fields to
+  prove the cap. Framework-raised errors echo only Starlette's static
+  phrases through the status→code table.
+- **`tests/conftest.py` was created in this milestone** (first
+  conftest in the repo): the autouse limiter reset exists because
+  in-process state would otherwise leak between test cases — the same
+  shape M057's fixture consolidation will build on.
+- D3 revisited as promised: `bcrypt==4.0.1` stays (passlib 1.7.4
+  breaks on bcrypt ≥ 4.1); dropping passlib is now recorded future
+  work, not smuggled in here.
+- Known limitation restated in code: the limiter is per-process
+  (effective limit = limit × workers when multi-worker); revisit with
+  a shared store if the API goes behind a public LB multi-worker.

@@ -60,6 +60,7 @@ PUBLIC_OPERATIONS = {
     ("GET", "/api/v1/ping"),
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/refresh"),
+    ("POST", "/api/v1/auth/logout"),  # possession-based (M055), like refresh
     ("GET", "/docs"),
     ("GET", "/redoc"),
     ("GET", "/openapi.json"),

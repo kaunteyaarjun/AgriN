@@ -4,24 +4,24 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "(none in progress) — M054 (deterministic demo seed) is done: uv run python -m workers.seed_demo populates the dev DB with a fixed world (4 users: admin/officer/2 farmers @agrin.demo, 2 farmers profiles, 2 farms with PostGIS rectangles, 4 plots with crop state via M019 set_plot_state, 2 signal caches via put_signals) keyed by uuid5 over a fixed namespace — re-running upserts in place, never duplicates, never cascade-deletes. Timestamps are seed-relative (observed_at = now-30min, planted_on = today-N days); content/sources fixed (demo-*-v1). Password from Settings.demo_password; dev falls back to the documented default, prod refuses to guess. Next per roadmap: M055 (auth hardening: rate limiting, refresh-token logout/revocation, unified AppError envelope, structured agrin.audit log events, bcrypt pin revisit) → M056 (perf) → M057 (test/CI consolidation, backend scope). Frontend chain M046-M053 remains 🔒 blocked on human approval. Remaining locks: M042 (LLM live), M046 (frontend), M058."
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037", "M039", "M040", "M041", "M043", "M044", "M045", "M054"]
-Current implementation status: "M054 done: the demo seed. New src/services/demo_seed.py: seed_demo(session, *, password, now=None) — uuid5(SEED_NAMESPACE, key) fixed ids for 4 users/2 farmers/2 farms/4 plots, ORM upserts for those rows, M019 set_plot_state + put_signals for crop state and signal caches (commits inside), returns SeedSummary; resolve_demo_password(settings) uses Settings.demo_password else DEV_DEMO_PASSWORD and raises in env=prod; farm geo via ST_GeomFromGeoJSON (M014 pattern), east/west polygons with fixed per-farm signal values (sources demo-*-v1). New workers/seed_demo.py CLI (no argparse — password never on a process command line) prints summary + credentials. Settings gains demo_password (SecretStr|None), .env.example documents DEMO_PASSWORD. New tests/services/test_demo_seed.py (8): 4 resolver tests + idempotency/roles/non-blind/password-rotation DB tests. No DB changes, no API changes, no new deps."
+Current milestone: "(none in progress) — M055 (security hardening) is done: in-process sliding-window rate limiting on /auth/login + /auth/refresh (429 {error_code: rate_limited} + Retry-After, stdlib only, per-IP per-bucket, audited blocks); refresh tokens now ROTATE and are backed by refresh_tokens rows (migration 0011, jti claim) with reuse detection revoking the whole family, plus POST /auth/logout (possession-based, idempotent) and POST /auth/logout-all (bearer); every client error answers {error_code, message} (pydantic 422 + Starlette 404/405 handlers added, detail key eliminated); structured agrin.audit events for all auth outcomes (log events, no table — locked); security headers (nosniff, DENY, no-referrer); DOCS_ENABLED kill-switch; D3 bcrypt pin revisited → keep; check.ps1 now runs bandit + pip-audit as gate steps. Next per roadmap: M056 (performance pass) → M057 (test/CI consolidation, backend scope). Frontend chain M046-M053 and M042/M058 remain 🔒 locked on human approval."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037", "M039", "M040", "M041", "M043", "M044", "M045", "M054", "M055"]
+Current implementation status: "M055 done: security hardening. New src/core/ratelimit.py: SlidingWindowLimiter (deque per key, injected clock, MAX_KEYS FIFO eviction, blocked attempts never recorded) + rate_limit(bucket) dependency factory raising RateLimited(429, Retry-After header) + rate_limited.blocked audit event; process-wide limiter instance reset by the new tests/conftest.py autouse fixture. New src/core/audit.py: audit(event, outcome, user_id, email, ip, **fields) on logger agrin.audit (M005 JsonFormatter). New src/models/refresh_token.py + migration 0011 (refresh_tokens: id=jti PK, user_id FK CASCADE, issued_at, expires_at, revoked_at, ix on user_id; hand-reviewed, alembic-check clean). src/core/security.py: create_refresh_token now REQUIRES jti. src/core/errors.py: AppError.headers passthrough, RateLimited, RequestValidationError handler (first-5 errors, 512-char cap) and StarletteHTTPException handler (status→stable-code table) — no detail key anywhere. src/main.py: SECURITY_HEADERS middleware + docs_url/redoc_url/openapi_url gated by settings.docs_enabled. src/api/v1/auth.py: rate limits on login/refresh (declared before SessionDep), audit on every outcome, refresh ROTATES (old row revoked; replayed revoked jti revokes all active rows for the user), POST /auth/logout (possession, idempotent), POST /auth/logout-all (bearer, revoked count), opportunistic expired-row GC on login. Settings: auth_rate_limit_per_minute=10, docs_enabled=True; .env.example documents both. scripts/check.ps1: bandit + pip-audit steps. bcrypt pin kept (D3 revisited). New tests: test_ratelimit (8), test_errors (5), test_hardening (5), auth +7 (rotation, reuse, logout, logout-all, 429s, audit), IDOR allow-list + logout. Updated: 3 detail assertions → envelope, rotation echo assertion, test_security jti."
 Known bugs: []
 Known security issues:
-  - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
+  - "M055 closed: login/refresh rate limiting (was open since M009), refresh-token revocation/logout, error-shape unification. Remaining by design: stateless access tokens keep working up to 15 min after logout-all (documented — no access-token denylist), rate limiter is per-process (limit × workers when multi-worker), /docs defaults to ON (DOCS_ENABLED=false for prod — SECURITY.md owns the write-up in M059)."
 Known performance issues:
   - "Live satellite ingest costs ~5.5 s/farm (2 HTTP calls; upstream ~3 s each) when satellite_provider=live; demo default unaffected. Live weather ~1 call. Sequential batch cost documented for M056."
 Known resource/memory issues:
   - "Residual (documented, not reproducible locally): asyncio.wait_for cancelling /ready's check mid real-socket cleanup; SQLAlchemy pool handles greenlet cancellation — re-measure in M056. Refused-connection path asserted clean (checkedout()==0)."
 Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
-  - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
+  - "Error-shape debt PAID in M055: every client error now answers {error_code, message} (pydantic 422, Starlette 404/405, AppError). Remaining known debt: passlib 1.7.4 is unmaintained (bcrypt pinned 4.0.1 to keep it working) — dropping passlib is future work; orphaned upload bytes on plot delete (M035, cleanup deferred)."
 Blocked tasks:
-  - "P1 milestones M051-M053 are dependency-blocked: M051 (what-if UI) needs M050 (M045 done), M052/M053 need M046. M038 (disease live model) waits on a live-model decision. P0s remaining: M046-M050 (frontend chain, 🔒 human checkpoint first), M055-M057 (backend scope, unblocked — M055 next). M054 now done."
-Next milestone: "M055 (auth & hardening, P0, deps M008/M009/M017 met): JIT spec covering the locked decisions — (1) in-process sliding-window rate limiter on login/refresh, NO new dependency, (2) refresh-token revocation/logout (one migration), (3) unify error shapes to the AppError {error_code, message} envelope (update tests; both 422 flavors recorded in M045), (4) structured agrin.audit log events instead of a table, (5) bcrypt pin/work-factor revisit (D3), /docs flag revisit (M007), add bandit+pip-audit to scripts/check.ps1. Then M056 (perf: live satellite ingest ~5.5s/farm, sequential batch cost, /ready wait_for residual, query-count regressions) → M057 (backend scope: consolidate ~12 duplicated API test fixtures into conftest — 713 tests must stay 713 — plus .github/workflows/ci.yml with postgis service). Frontend chain M046-M053 and M042/M058 remain locked on human approval."
-Last verification: "M054 final gate PASSED with live dev DB (65432), run on a clean schema BEFORE the commits: ruff format OK (147 files), ruff check OK, mypy OK (144 sources), pytest 713 passed / 0 skipped (8 new: tests/services/test_demo_seed.py); bandit -r -ll on src + workers = 0; pip-audit clean — no new dependencies, no migration, no API changes. Sequence this milestone: gate #1 green → workers/seed_demo.py run twice end-to-end (identical summaries: users=4 farmers=2 farms=2 plots=4 plot_states=4 signal_caches=2, proving idempotency live) → gate #2 FAILED 8 counting tests on the seed residue → migration round-trip auto-wiped the rows → gate #3 green (see Notes)."
-Last test result: "pytest = 713 passed (demo-seed 8, whatif-API 11, test_whatif 26, analysis 7, advisory-API 5, advisory 17, llm 24, decision 21, disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+  - "P1 milestones M051-M053 are dependency-blocked: M051 (what-if UI) needs M050 (M045 done), M052/M053 need M046. M038 (disease live model) waits on a live-model decision. P0s remaining: M046-M050 (frontend chain, 🔒 human checkpoint first), M056-M057 (backend scope, unblocked — M056 next). M054 + M055 now done."
+Next milestone: "M056 (performance pass, P0, deps met): JIT spec over the recorded items — live satellite ingest ~5.5 s/farm (2 sequential upstream calls, upstream ~3 s each) when satellite_provider=live, sequential batch cost across ingest_*_for_all, the /ready asyncio.wait_for cancellation residual (re-measure in-process per M007 note), query-count regression tests (N+1 guards on get_farm_state / analyze_farm / list endpoints). Decide concurrency shape carefully (per-farm parallelism bounded, no provider hammering). Then M057 (backend scope: consolidate duplicated API test fixtures into conftest — 738 tests must stay 738 (moves, not deletions) — plus .github/workflows/ci.yml with postgis/postgis:16-3.4 service on 65432). Frontend chain M046-M053 and M042/M058 remain locked on human approval."
+Last verification: "M055 gate PASSED (first six-step gate: format → lint → mypy → pytest → bandit → pip-audit) with live dev DB (65432): ruff format OK (155 files), ruff check OK, mypy OK (152 sources), pytest 738 passed / 0 skipped (25 new), bandit -r -ll on src + workers = 0 findings, pip-audit clean (no new dependencies). Migration 0011 verified by upgrade → alembic check → downgrade → upgrade before tests. Gate ran BEFORE the commits (M044 rule)."
+Last test result: "pytest = 738 passed (demo-seed 8, ratelimit 8, errors-API 5, hardening-API 5, auth-API 21, whatif-API 11, test_whatif 26, analysis 7, advisory-API 5, advisory 17, llm 24, decision 21, disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -30,7 +30,7 @@ Last test result: "pytest = 713 passed (demo-seed 8, whatif-API 11, test_whatif 
 |---|---|
 | D1 | Section 3 locked architecture — confirmed as-is |
 | D2 | Dev commands → `uv run ruff|mypy|pytest` + `scripts/check.ps1` (no make/just on this Windows host) |
-| D3 | Password hashing → `passlib[bcrypt]` + pin `bcrypt==4.0.1` (revisit in M055) |
+| D3 | Password hashing → `passlib[bcrypt]` + pin `bcrypt==4.0.1` — **revisited in M055: keep both** (passlib 1.7.4 breaks on bcrypt ≥ 4.1, removed `__about__`; passlib unmaintained → dropping it is recorded future work). Work factor stays passlib's bcrypt default (12 rounds). |
 | D4 | Authorized system actions: `git init`; start Docker Desktop when M003+ verification needs the dev Postgres |
 | D5 | JWT library → **PyJWT** (Section 3 allows "python-jose or pyjwt") |
 | D6 | Python → **3.12** pinned via `.python-version` / `requires-python` |
@@ -584,3 +584,39 @@ Last test result: "pytest = 713 passed (demo-seed 8, whatif-API 11, test_whatif 
   polygons remain "map it in the UI" data. If M056's spatial queries
   ever need plot-level geometry for demos, that's a seed extension,
   not a new milestone.
+- 2026-09-30 (M055): **the error-unification blast radius was three
+  assertions, not thirty** — most API tests only pin status codes, so
+  the recorded M017/M020/M045 "dual dialect" debt turned out to be
+  test-assertion debt in exactly 3 places (`test_farm_state` ×1,
+  `test_whatif` ×2) plus the rotation echo in `test_auth`. When a
+  debt entry says "clients rely on shape X", grep the *tests* first:
+  they are usually the only clients, and the migration is smaller
+  than the note suggests.
+- 2026-09-30 (M055): **rate-limit tests must reset process state or
+  they poison their neighbours** — the limiter is deliberately
+  process-wide (no DI seam in the request path), so `tests/conftest.py`
+  (the repo's first conftest) carries an autouse reset. Any future
+  module-level mutable state needs the same treatment *before* its
+  tests land, or the failure shows up in an unrelated file.
+- 2026-09-30 (M055): **dependency order is a security control.**
+  `_limit` is declared before `SessionDep` so a blocked brute-force
+  never opens a session (FastAPI solves sub-dependencies in
+  declaration order). Reordering params looks like style and isn't —
+  the comment in the signature is load-bearing.
+- 2026-09-30 (M055): the IDOR default-deny sweep caught `logout`
+  immediately (422 where it demanded 401) — possession-based routes
+  can't answer 401 to a request with no body. The allow-list treats
+  it like `login`/`refresh`; `logout-all` (bearer) must stay OUT of
+  the list. When adding any credential-bearing route, update
+  `PUBLIC_OPERATIONS` in the same commit or the sweep fails by
+  design — which is exactly what a regression guard should do.
+- 2026-09-30 (M055): **rotation changes the client contract** —
+  anything caching a refresh token must read the response each time.
+  Recorded in the spec as a breaking change; the reuse-detection
+  payoff (replay ⇒ family revoked) is tested in both directions
+  (replayed old fails AND the rotated sibling fails AND fresh login
+  still works — revocation is not a ban).
+- 2026-09-30 (M055): `check.ps1` now runs bandit + pip-audit, so the
+  D8/M035 "pin, audit, record" checklist is enforced mechanically.
+  Note pip-audit needs network; a flaky network fails the gate (by
+  design — a dependency scan you can skip isn't a scan).

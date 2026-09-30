@@ -78,7 +78,9 @@ def get_jwt_secret() -> str:
     return secret
 
 
-def _create_token(user_id: uuid.UUID, token_type: str, ttl: timedelta) -> str:
+def _create_token(
+    user_id: uuid.UUID, token_type: str, ttl: timedelta, *, jti: str | None = None
+) -> str:
     now = datetime.now(UTC)
     payload: dict[str, str | int] = {
         "sub": str(user_id),
@@ -86,6 +88,8 @@ def _create_token(user_id: uuid.UUID, token_type: str, ttl: timedelta) -> str:
         "iat": int(now.timestamp()),
         "exp": int((now + ttl).timestamp()),
     }
+    if jti is not None:
+        payload["jti"] = jti
     return pyjwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
@@ -95,10 +99,20 @@ def create_access_token(user_id: uuid.UUID) -> str:
     return _create_token(user_id, "access", timedelta(minutes=settings.jwt_access_ttl_minutes))
 
 
-def create_refresh_token(user_id: uuid.UUID) -> str:
-    """Longer-lived refresh token (settings.jwt_refresh_ttl_days)."""
+def create_refresh_token(user_id: uuid.UUID, *, jti: uuid.UUID) -> str:
+    """Longer-lived refresh token (settings.jwt_refresh_ttl_days).
+
+    ``jti`` is REQUIRED (M055): the caller must persist the row in
+    ``refresh_tokens`` under that id or revocation cannot work. Access
+    tokens stay stateless and carry no ``jti``.
+    """
     settings = get_settings()
-    return _create_token(user_id, "refresh", timedelta(days=settings.jwt_refresh_ttl_days))
+    return _create_token(
+        user_id,
+        "refresh",
+        timedelta(days=settings.jwt_refresh_ttl_days),
+        jti=str(jti),
+    )
 
 
 def decode_token(token: str, expected_type: str) -> dict[str, Any]:

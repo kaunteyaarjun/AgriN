@@ -1,17 +1,18 @@
 """AgriN FastAPI application.
 
 The app factory wires configuration, structured logging (M005), sanitized
-exception handlers (M005), the health/readiness probes (M007), the versioned
-API router, and an explicit CORS allow-list. Domain endpoints are mounted in
-later milestones.
+exception handlers (M005), security headers and the optional interactive
+docs (M055), the health/readiness probes (M007), the versioned API router,
+and an explicit CORS allow-list. Domain endpoints are mounted in later
+milestones.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.health import router as health_router
@@ -23,6 +24,14 @@ from src.core.logging import configure_logging
 APP_NAME = "AgriN API"
 APP_VERSION = "0.1.0"
 APP_DESCRIPTION = "Self-hostable digital agriculture intelligence platform."
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+"""Baseline headers on every response (M055). No HSTS — that belongs
+to the TLS terminator; no CSP — the future frontend owns its policy."""
 
 
 @asynccontextmanager
@@ -40,7 +49,20 @@ def create_app() -> FastAPI:
         version=APP_VERSION,
         description=APP_DESCRIPTION,
         lifespan=lifespan,
+        # M055 kill-switch: /docs, /redoc and /openapi.json vanish when off.
+        docs_url="/docs" if settings.docs_enabled else None,
+        redoc_url="/redoc" if settings.docs_enabled else None,
+        openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
+
+    @app.middleware("http")
+    async def _security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        for header, value in SECURITY_HEADERS.items():
+            response.headers[header] = value
+        return response
 
     app.add_middleware(
         CORSMiddleware,

@@ -101,10 +101,12 @@ def test_access_token_round_trip() -> None:
 
 def test_refresh_token_round_trip_and_ttl() -> None:
     user_id = uuid.uuid4()
-    token = security.create_refresh_token(user_id)
+    jti = uuid.uuid4()
+    token = security.create_refresh_token(user_id, jti=jti)
     claims = security.decode_token(token, "refresh")
     assert claims["sub"] == str(user_id)
     assert claims["type"] == "refresh"
+    assert claims["jti"] == str(jti)  # M055: revocation key is in the claim
     ttl = int(claims["exp"]) - int(claims["iat"])
     assert ttl == 7 * 24 * 3600  # settings default jwt_refresh_ttl_days
 
@@ -116,7 +118,7 @@ def test_access_token_rejected_where_refresh_expected() -> None:
 
 
 def test_refresh_token_rejected_where_access_expected() -> None:
-    token = security.create_refresh_token(uuid.uuid4())
+    token = security.create_refresh_token(uuid.uuid4(), jti=uuid.uuid4())
     with pytest.raises(InvalidToken):
         security.decode_token(token, "access")
 

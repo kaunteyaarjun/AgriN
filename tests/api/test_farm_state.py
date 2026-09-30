@@ -308,9 +308,10 @@ async def test_put_plot_state_validation_shapes(_users: dict[str, User]) -> None
             json={**STATE_BODY, "crop": "   "},
             headers=_headers(_users["alpha"]),
         )
-    # pydantic shape: {detail: [...]}
+    # M055: every 422 answers the same envelope, whatever raised it
     assert bad_stage.status_code == 422
-    assert "detail" in bad_stage.json()
+    assert bad_stage.json()["error_code"] == "validation_failed"
+    assert "growth_stage" in bad_stage.json()["message"]
     # AppError shape: {error_code, message} from the service
     assert blank_crop.status_code == 422
     assert blank_crop.json()["error_code"] == "validation_failed"

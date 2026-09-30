@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # M054 demo seed: unset = dev default (workers/demo_seed refuses that in prod).
     demo_password: SecretStr | None = None
 
+    # M055 hardening: sliding-window limit per bucket per client IP (in-process).
+    auth_rate_limit_per_minute: int = Field(default=10, gt=0)
+    # M055: mount /docs, /redoc and /openapi.json (M007 status quo; turn off in prod).
+    docs_enabled: bool = True
+
     weather_provider: ProviderMode = "demo"
     satellite_provider: ProviderMode = "demo"
     soil_provider: ProviderMode = "demo"
