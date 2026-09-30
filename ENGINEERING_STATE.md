@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "(none in progress) — M044 (What-if simulation engine) is done: src/engines/whatif.py's simulate_what_if(state, overrides, *, now, disease=()) validates a closed six-knob catalogue (temperature, rainfall, soil moisture, pH, nitrogen, NDVI — ranges borrowed from M031 so validation precedes normalization), re-stamps overridden families to the simulation clock (materializing never-ingested families with observed_at=now and NO fabricated source), re-runs M043's run_analysis twice under one clock, and returns baseline + hypothetical + a structured WhatIfChanges diff (stance/health/risk-band deltas, action-count deltas, actions added/removed by (origin, code, plot_id) multiset). Next per roadmap: M045 what-if API (POST body → authz-free service → this engine; no advisory prose per human decision 2026-09-30) → then the 🔒 frontend chain (M046 needs approval). Remaining 🔒 checkpoints: M042 (LLM live), M046 (frontend), M058. M030 stays P2 (see Next milestone)."
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037", "M039", "M040", "M041", "M043", "M044"]
-Current implementation status: "M044 done: the pure what-if engine and its 26 tests. New src/engines/whatif.py: WHAT_IF_KNOBS (family -> knob -> allowed range, deliberately only fields an engine scores), WhatIfChanges/WhatIfResult DTOs, _apply_overrides (validate values against M031's exported ranges BEFORE normalize so out-of-range can't silently become None; re-stamp observed_at to the simulation clock; check the rainfall measurement window AFTER normalize — only the source profile knows it), _changes (multiset diff keyed (origin, code, plot_id)), simulate_what_if (ValueError for every caller bug: empty overrides, unknown family/knob, non-numeric/bool, out-of-range, malformed family, windowless rainfall). Exports added to src/engines/__init__.py. No DB, no network, no clock beyond `now`, no advisory text (M041 stays a separate step), no endpoint (M045 takes the body)."
+Current milestone: "(none in progress) — M045 (What-if simulation API) is done: POST /api/v1/farms/{farm_id}/what-if takes an overrides body, authorizes through M043's read matrix (a simulation reads stored state and writes nothing), loads the twin through the new authz-free src/services/whatif.py::simulate_farm_what_if (mirrors analyze_farm: load → normalize → engine, one now threaded through), and returns M044's WhatIfResult verbatim — baseline + hypothetical + diff, NO advisory prose (human decision 2026-09-30), no provider calls hence no 502 path. Engine ValueErrors map to 422 validation_failed with the knob named; structural problems are pydantic 422 (M020's accepted dual flavor). Next per roadmap: the 🔒 frontend chain starts at M046 (needs human approval) → M047–M050 → M051 (what-if UI, deps now just M050). Unblocked alternates meanwhile: M054 (demo seed), M030 (soil live, P2), M038 (live-model decision). Remaining 🔒: M042 (LLM live), M046 (frontend), M058."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037", "M039", "M040", "M041", "M043", "M044", "M045"]
+Current implementation status: "M045 done: the what-if endpoint. New src/services/whatif.py: simulate_farm_what_if(session, farm_id, overrides, *, now=None, disease=()) — get_farm_state → normalize_signals → M044 simulate_what_if under one clock, NO authz (M019 rule), no commits, NotFound for unknown farms. New src/api/v1/whatif.py: POST /api/v1/farms/{farm_id}/what-if with WhatIfRequest {overrides: {family: {field: value}}} (structure only — WHAT_IF_KNOBS owns semantics), _authorized_farm(read) first, ValueError → ValidationFailed(str) 422 verbatim, response_model=WhatIfResult. Router registered. New tests/api/test_whatif.py (11): read matrix, shape + one-clock assertions, dry-soil knob moving the answer over HTTP, both 422 flavors (pydantic detail vs error_code=validation_failed), windowless-rainfall rejection, stored-twin byte-identical after POST, no advisory key. No DB changes, no provider calls, no persistence, no rate limiting."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -18,10 +18,10 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks:
-  - "P1 milestones M051, M052, M053 are dependency-blocked: M051 needs M045/M050 (what-if API + advisory UI), M052/M053 need M046. M038 (disease live model, P1/P2) waits on a live-model decision. P0s still unstarted: M045, M046–M050 (M031–M037, M039–M041, M043, M044 now done) — spec them just-in-time per Section 8. M042 (LLM live) and M046 (frontend) additionally need 🔒 human checkpoints."
-Next milestone: "Roadmap order: M045 what-if simulation API (deps M044 ✓): POST /api/v1/farms/{farm_id}/what-if taking an overrides body, M014 read-matrix authz first, new authz-free service (load twin → simulate_what_if), engine ValueError → 422 ValidationFailed, response = WhatIfResult ONLY — no advisory prose (human decision 2026-09-30), no persistence, no provider calls hence no 502 path. Then the 🔒 frontend chain (M046 needs approval; M047–M050 follow). Unblocked alternates: M054 (demo seed, deps M016+M018 met), M030 (soil live, P2), M038 (needs a live-model decision). Remaining locks: M042 (LLM live), M046 (frontend), M058."
-Last verification: "M044 gate PASSED with live dev DB (65432): ruff format OK (141 files), ruff check OK, mypy OK (138 sources), pytest 694 passed / 0 skipped (26 new: tests/engines/test_whatif.py); bandit -r -ll on src + workers = 0; pip-audit clean — no new dependencies, no migration, no endpoint. CAUTION: the gate ran only AFTER the implementation was pushed — it caught a 107-char unformatted line and a nested-dict membership assertion that made all six knob-sweep params fail; both fixed before close."
-Last test result: "pytest = 694 passed (test_whatif 26, analysis 7, advisory-API 5, advisory 17, llm 24, decision 21, disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+  - "P1 milestones M051–M053 are dependency-blocked: M051 (what-if UI) now needs only M050 (M045 done), M052/M053 need M046. M038 (disease live model, P1/P2) waits on a live-model decision. P0s still unstarted: M046–M050, M054–M057 (M044/M045 now done) — M046 needs a 🔒 human checkpoint before anything in the frontend chain starts; M047–M050/M054 are spec-able just-in-time per Section 8 once that lock opens."
+Next milestone: "🔒 M046 (frontend bootstrap: Vite+React+TS+Tailwind, auth flow) needs human approval before implementation — the lock protocol (M021/M039 precedent): present the design, wait for sign-off, then flip the roadmap. Until then, unblocked alternates: M054 (demo seed script, deps M016+M018 met — recommended next, it makes the API demoable), M030 (soil live, P2), M038 (needs a live-model decision), M042 (LLM live, also 🔒). After M046: M047→M048/M049/M050 (M050 unlocks M051 — the what-if UI over M045's endpoint), then M052→M053. Remaining locks: M042, M046, M058."
+Last verification: "M045 gate PASSED with live dev DB (65432): ruff format OK (144 files), ruff check OK, mypy OK (141 sources), pytest 705 passed / 0 skipped (11 new: tests/api/test_whatif.py, green on first run); bandit -r -ll on src + workers = 0; pip-audit clean — no new dependencies, no migration, no provider calls, no writes. Gate ran BEFORE the commits this milestone (M044 lesson applied)."
+Last test result: "pytest = 705 passed (whatif-API 11, test_whatif 26, analysis 7, advisory-API 5, advisory 17, llm 24, decision 21, disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -84,6 +84,7 @@ Last test result: "pytest = 694 passed (test_whatif 26, analysis 7, advisory-API
 | M041 | `ac6ddda` |
 | M043 | `17eeb78` |
 | M044 | `54c1180` (engine), `82e4c1a` (tests), `c34c874` (fix) — all pushed with message `commit` |
+| M045 | `3a0412f` |
 
 ## Notes / findings
 
@@ -519,3 +520,27 @@ Last test result: "pytest = 694 passed (test_whatif 26, analysis 7, advisory-API
   `src.engines`, never from `src.engines.whatif` directly (M033's export
   lesson), and derive its request/response limits from `WHAT_IF_KNOBS` rather
   than re-coding them.
+- 2026-09-30 (M045): **the gate-before-push rule was applied for the first
+  time and the milestone went green on the first run** (11/11 new tests, full
+  gate 705 passed). M044's two failures were both pre-push preventable; the
+  discipline costs one gate run (~2 min) and buys not pushing broken code.
+- 2026-09-30 (M045): **`analyze_farm` reuse was the wrong instinct.** It
+  returns a `FarmAnalysis` (running the baseline once for nothing) and would
+  have forced a *second* clock read in the route to call the engine. The
+  service mirrors it instead: load → normalize → hand to `simulate_what_if`
+  with the same `now`. When two services differ only in their final call,
+  copy the shell — don't chain the siblings.
+- 2026-09-30 (M045): **the dual-422 convention now has one file exercising
+  both halves** (`tests/api/test_whatif.py`): pydantic `{detail}` for
+  structure (fires before the handler), AppError `{error_code:
+  validation_failed}` for the engine's message verbatim. Both are asserted,
+  so the M055 unification pass will see exactly what today's clients rely on.
+- 2026-09-30 (M045): **M043's completion notes had been left stranded after
+  M044's section** (appended at file end while the M044 spec sat before
+  them). Moved back under M043's spec while writing M045's. Lesson: append
+  completion notes *inside* the milestone's section, not at EOF — the next
+  spec lands at EOF immediately after.
+- 2026-09-30 (M045): authz-before-body re-confirmed for POST (M035's
+  structural lesson): anon gets 401 even when the body is valid, and a
+  malformed path id still yields pydantic's 422 — the read matrix does not
+  care which verb carries the argument.
