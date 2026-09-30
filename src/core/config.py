@@ -46,6 +46,9 @@ class Settings(BaseSettings):
 
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
 
+    # M054 demo seed: unset = dev default (workers/demo_seed refuses that in prod).
+    demo_password: SecretStr | None = None
+
     weather_provider: ProviderMode = "demo"
     satellite_provider: ProviderMode = "demo"
     soil_provider: ProviderMode = "demo"

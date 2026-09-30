@@ -78,7 +78,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M052 | Admin dashboard: farmer/farm oversight list | P1 | M046, M010 | not-started |
 | M053 | Admin dashboard: low-confidence disease review queue | P1 | M052, M037 | not-started |
 | **Demo data** | | | | |
-| M054 | Deterministic demo data seed script | P0 | M016, M018 | not-started |
+| M054 | Deterministic demo data seed script | P0 | M016, M018 | in-progress |
 | **Hardening passes** | | | | |
 | M055 | Security hardening pass (rate limits, audit log, headers, dep scan) | P0 | all API milestones | not-started |
 | M056 | Performance & resource review pass | P0 | all service milestones | not-started |
@@ -7026,3 +7026,149 @@ no response caching.
   storage, no rate limiting (M055), no UI (M051), no live model
   (M042, 🔒), no frontend (M046–M050), no engine rules (M044 owns
   the knobs), no caching.
+
+### M054 — Deterministic demo data seed script
+
+**Priority:** P0 **Depends On:** M016, M018
+**Status:** done
+
+#### Objective
+`workers/seed_demo.py` CLI over a testable core
+(`src/services/demo_seed.py::seed_demo`) that populates the dev
+database with a fixed, re-runnable demo world: 4 users (admin,
+extension officer, 2 farmers), their profiles, 2 farms with PostGIS
+boundaries, 4 plots with crop state, and one fresh signal cache per
+farm — everything keyed by **deterministic UUIDs** so re-running
+updates in place instead of duplicating.
+
+#### Why This Milestone Exists
+Every demo, manual curl session and seeded API test currently builds
+its own world ad hoc; M019's spec explicitly reserved its write paths
+(`set_plot_state`, `put_signals`) for this milestone. A demo vertical
+slice (and M051's UI later) needs one command that produces the same
+farmers/farms/plots every time.
+
+#### Files Expected to Be Created
+- `src/services/demo_seed.py`
+- `workers/seed_demo.py`
+- `tests/services/test_demo_seed.py`
+
+#### Files Expected to Be Modified
+- `src/core/config.py` (`demo_password` setting)
+- `.env.example` (documented placeholder)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None — writes rows into existing tables only (M008/M011–M016/M018).
+No schema change, no migration.
+
+#### API Changes
+None — seeding goes through services/models directly; no route calls,
+no authz (it is not an API surface).
+
+#### External Dependencies
+None new — SQLAlchemy, M019 services, M031-compatible signal docs.
+
+#### Design Decisions
+- **Deterministic ids via `uuid.uuid5`** over a fixed namespace +
+  stable keys (`user:admin@example.com`, `farm:east`, `plot:east-1`).
+  Idempotency falls out of it: the second run sees the same PKs and
+  upserts. Names/emails are likewise fixed constants.
+- **Write paths:** users/farmers/farms/plots via the ORM (upsert by
+  fixed id); crop state and signals through M019's `set_plot_state` /
+  `put_signals` exactly as its spec promised — one source of truth for
+  upsert semantics and growth-stage validation.
+- **Geo included:** each farm gets a small closed WGS84 rectangle
+  (Nairobi-adjacent, written with `ST_GeomFromGeoJSON` like M014) so
+  the M023/M026/M029 ingestion workers and geo-dependent paths have
+  geometry to work with. `area_hectares` set alongside.
+- **Timestamps are seed-relative, content is fixed.** Signal
+  `observed_at = now − 30 min` and `planted_on = today − N days`
+  (fixed offsets), because a *fixed* absolute date would be stale by
+  demo time — determinism means the same world shape, not the same
+  clock reading. Everything else (crops, stages, signal values,
+  sources matching M031's `SOURCE_PROFILES`) is byte-identical across
+  runs.
+- **Password resolution:** `Settings.demo_password` (`SecretStr`,
+  unset by default). The worker uses a documented dev default only in
+  `env=dev` and **refuses to run in prod without an explicit value**
+  (M002's fail-fast rule); the CLI prints the credentials once.
+- **Idempotent by upsert, not delete-and-recreate** — re-seeding must
+  never cascade-delete a demo farm someone attached images to (M035).
+- **Gate interaction:** `test_migrations.py`'s round-trip wipes all
+  rows (M012 lesson), so the documented workflow is *seed after the
+  final gate run*.
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/core/config.py` + `.env.example`: `demo_password`.
+3. `src/services/demo_seed.py`: constants, uuid5 keys, upserts,
+   `SeedSummary`.
+4. `workers/seed_demo.py`: CLI (argparse like the ingest workers).
+5. `tests/services/test_demo_seed.py`.
+6. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+- [x] seeding twice leaves exactly one row per entity (users,
+  farmers, farms, plots, plot states, signal caches) — no duplicates,
+  fixed ids and emails identical across runs.
+- [x] roles are right (admin, extension_officer, 2 farmers) and the
+  password verifies through `verify_password`.
+- [x] `get_farm_state` over a seeded farm shows planted plots, crops
+  and non-empty fresh signals; `run_analysis` on it reports zero
+  unknown-factor plots (the seed is not "blind").
+- [x] re-run with a different password updates the hash in place
+  (upsert, not duplicate).
+- [x] password resolution: dev falls back to the documented default;
+  prod without an explicit value refuses (unit test on the resolver).
+
+#### Verification Commands
+```bash
+uv run pytest tests/services/test_demo_seed.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No API route or authz surface (nothing new is publicly reachable), no
+migration, no provider calls (signal docs are hand-written demo
+values, not M022/M025/M028 fetches), no images, no advisory/what-if
+artifacts, no frontend, no rate limiting (M055).
+
+#### Verification & Notes (added on completion)
+- Gate **PASSED** with live dev DB (65432): ruff format OK (147
+  files), ruff check OK, mypy OK (144 sources), pytest **713 passed /
+  0 skipped** (8 new: `tests/services/test_demo_seed.py`); bandit
+  `-r -ll` on `src` + `workers` = 0; pip-audit clean — no new
+  dependencies, no migration, no provider calls. Gate ran BEFORE the
+  commits (M044 rule); CLI was then exercised twice AFTER the gate
+  (M012 rule) — identical summaries both runs.
+- **Deviation (step 4):** the worker takes **no argparse/`--password`
+  argument** despite the step's parenthetical — a password on the
+  command line is visible in the process list. Credentials come from
+  `Settings.demo_password` (or the dev default) only; the CLI prints
+  them once for the operator.
+- Keying: users are keyed `user:<name>` (short fixed keys, not the
+  email), farms `farm:<east|west>`, plots `plot:<east|west-N>`;
+  emails are fixed constants attached to those keys. Determinism
+  verified by comparing ids across two runs.
+- East/west farms intentionally carry *different* (but each fixed)
+  signal values — a demo with two identical farms exercises nothing.
+  Sources match M031's `SOURCE_PROFILES` (`demo-*-v1`), so
+  `normalize_signals` fills every timeframe-derived field and the
+  `analyze_farm` unknown-factor count is 0.
+- **Re-seed after any gate run** — the migration round-trip (M012)
+  still wipes these rows; the seed is documented in its own module
+  docstring and the CLI help. **The inverse also holds: never run the
+  CLI *between* gate runs.** The end-to-end CLI check ran after gate
+  #1, and gate #2 then failed 8 tests that count global rows
+  (officer list `total` 3 vs 1, `ingest_*_for_all` 4 vs 2 — the 2
+  demo farms entered every sweep). The suite's own migration
+  round-trip wiped the residue at the end of that failing run; gate
+  #3 on the clean DB: 713 passed. Rule: CLI verification goes after
+  the *final* gate, or wipe the four fixed user ids first.
+- Tests skip without dev Postgres (house pattern) and scope cleanup
+  to the four fixed user ids; the FK cascade removes farmers, farms,
+  plots, states, signal caches. No unscoped deletes (M012/M019).

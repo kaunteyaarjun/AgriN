@@ -4,9 +4,9 @@
 > (Master Engineering Prompt, Section 11). Never batch-update this file.
 
 ```yaml
-Current milestone: "(none in progress) — M045 (What-if simulation API) is done: POST /api/v1/farms/{farm_id}/what-if takes an overrides body, authorizes through M043's read matrix (a simulation reads stored state and writes nothing), loads the twin through the new authz-free src/services/whatif.py::simulate_farm_what_if (mirrors analyze_farm: load → normalize → engine, one now threaded through), and returns M044's WhatIfResult verbatim — baseline + hypothetical + diff, NO advisory prose (human decision 2026-09-30), no provider calls hence no 502 path. Engine ValueErrors map to 422 validation_failed with the knob named; structural problems are pydantic 422 (M020's accepted dual flavor). Next per roadmap: the 🔒 frontend chain starts at M046 (needs human approval) → M047–M050 → M051 (what-if UI, deps now just M050). Unblocked alternates meanwhile: M054 (demo seed), M030 (soil live, P2), M038 (live-model decision). Remaining 🔒: M042 (LLM live), M046 (frontend), M058."
-Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037", "M039", "M040", "M041", "M043", "M044", "M045"]
-Current implementation status: "M045 done: the what-if endpoint. New src/services/whatif.py: simulate_farm_what_if(session, farm_id, overrides, *, now=None, disease=()) — get_farm_state → normalize_signals → M044 simulate_what_if under one clock, NO authz (M019 rule), no commits, NotFound for unknown farms. New src/api/v1/whatif.py: POST /api/v1/farms/{farm_id}/what-if with WhatIfRequest {overrides: {family: {field: value}}} (structure only — WHAT_IF_KNOBS owns semantics), _authorized_farm(read) first, ValueError → ValidationFailed(str) 422 verbatim, response_model=WhatIfResult. Router registered. New tests/api/test_whatif.py (11): read matrix, shape + one-clock assertions, dry-soil knob moving the answer over HTTP, both 422 flavors (pydantic detail vs error_code=validation_failed), windowless-rainfall rejection, stored-twin byte-identical after POST, no advisory key. No DB changes, no provider calls, no persistence, no rate limiting."
+Current milestone: "(none in progress) — M054 (deterministic demo seed) is done: uv run python -m workers.seed_demo populates the dev DB with a fixed world (4 users: admin/officer/2 farmers @agrin.demo, 2 farmers profiles, 2 farms with PostGIS rectangles, 4 plots with crop state via M019 set_plot_state, 2 signal caches via put_signals) keyed by uuid5 over a fixed namespace — re-running upserts in place, never duplicates, never cascade-deletes. Timestamps are seed-relative (observed_at = now-30min, planted_on = today-N days); content/sources fixed (demo-*-v1). Password from Settings.demo_password; dev falls back to the documented default, prod refuses to guess. Next per roadmap: M055 (auth hardening: rate limiting, refresh-token logout/revocation, unified AppError envelope, structured agrin.audit log events, bcrypt pin revisit) → M056 (perf) → M057 (test/CI consolidation, backend scope). Frontend chain M046-M053 remains 🔒 blocked on human approval. Remaining locks: M042 (LLM live), M046 (frontend), M058."
+Completed milestones: ["M001", "M002", "M003", "M004", "M005", "M006", "M007", "M008", "M009", "M010", "M011", "M012", "M013", "M014", "M015", "M016", "M017", "M018", "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M031", "M032", "M033", "M034", "M035", "M036", "M037", "M039", "M040", "M041", "M043", "M044", "M045", "M054"]
+Current implementation status: "M054 done: the demo seed. New src/services/demo_seed.py: seed_demo(session, *, password, now=None) — uuid5(SEED_NAMESPACE, key) fixed ids for 4 users/2 farmers/2 farms/4 plots, ORM upserts for those rows, M019 set_plot_state + put_signals for crop state and signal caches (commits inside), returns SeedSummary; resolve_demo_password(settings) uses Settings.demo_password else DEV_DEMO_PASSWORD and raises in env=prod; farm geo via ST_GeomFromGeoJSON (M014 pattern), east/west polygons with fixed per-farm signal values (sources demo-*-v1). New workers/seed_demo.py CLI (no argparse — password never on a process command line) prints summary + credentials. Settings gains demo_password (SecretStr|None), .env.example documents DEMO_PASSWORD. New tests/services/test_demo_seed.py (8): 4 resolver tests + idempotency/roles/non-blind/password-rotation DB tests. No DB changes, no API changes, no new deps."
 Known bugs: []
 Known security issues:
   - "Open (by design until M055): login/refresh have no rate limiting (flagged since M009); /docs+/redoc+/openapi.json public (documented hackathon decision, SECURITY.md in M059)."
@@ -18,10 +18,10 @@ Technical debt:
   - "Autogenerate migrations must ALWAYS be hand-reviewed — M008 caught a duplicated same-name CHECK constraint in the generated output."
   - "Error-shape inconsistency: Starlette route-mismatch 404 returns {detail} while AppError 404 returns {error_code,message} — no leak, optional HTTPException handler unification deferred to M055 (M017 finding). Both 422 flavors (pydantic {detail} vs AppError {error_code}) now coexist on purpose in farm-state routes (M020); unify in the same M055 pass."
 Blocked tasks:
-  - "P1 milestones M051–M053 are dependency-blocked: M051 (what-if UI) now needs only M050 (M045 done), M052/M053 need M046. M038 (disease live model, P1/P2) waits on a live-model decision. P0s still unstarted: M046–M050, M054–M057 (M044/M045 now done) — M046 needs a 🔒 human checkpoint before anything in the frontend chain starts; M047–M050/M054 are spec-able just-in-time per Section 8 once that lock opens."
-Next milestone: "🔒 M046 (frontend bootstrap: Vite+React+TS+Tailwind, auth flow) needs human approval before implementation — the lock protocol (M021/M039 precedent): present the design, wait for sign-off, then flip the roadmap. Until then, unblocked alternates: M054 (demo seed script, deps M016+M018 met — recommended next, it makes the API demoable), M030 (soil live, P2), M038 (needs a live-model decision), M042 (LLM live, also 🔒). After M046: M047→M048/M049/M050 (M050 unlocks M051 — the what-if UI over M045's endpoint), then M052→M053. Remaining locks: M042, M046, M058."
-Last verification: "M045 gate PASSED with live dev DB (65432): ruff format OK (144 files), ruff check OK, mypy OK (141 sources), pytest 705 passed / 0 skipped (11 new: tests/api/test_whatif.py, green on first run); bandit -r -ll on src + workers = 0; pip-audit clean — no new dependencies, no migration, no provider calls, no writes. Gate ran BEFORE the commits this milestone (M044 lesson applied)."
-Last test result: "pytest = 705 passed (whatif-API 11, test_whatif 26, analysis 7, advisory-API 5, advisory 17, llm 24, decision 21, disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
+  - "P1 milestones M051-M053 are dependency-blocked: M051 (what-if UI) needs M050 (M045 done), M052/M053 need M046. M038 (disease live model) waits on a live-model decision. P0s remaining: M046-M050 (frontend chain, 🔒 human checkpoint first), M055-M057 (backend scope, unblocked — M055 next). M054 now done."
+Next milestone: "M055 (auth & hardening, P0, deps M008/M009/M017 met): JIT spec covering the locked decisions — (1) in-process sliding-window rate limiter on login/refresh, NO new dependency, (2) refresh-token revocation/logout (one migration), (3) unify error shapes to the AppError {error_code, message} envelope (update tests; both 422 flavors recorded in M045), (4) structured agrin.audit log events instead of a table, (5) bcrypt pin/work-factor revisit (D3), /docs flag revisit (M007), add bandit+pip-audit to scripts/check.ps1. Then M056 (perf: live satellite ingest ~5.5s/farm, sequential batch cost, /ready wait_for residual, query-count regressions) → M057 (backend scope: consolidate ~12 duplicated API test fixtures into conftest — 713 tests must stay 713 — plus .github/workflows/ci.yml with postgis service). Frontend chain M046-M053 and M042/M058 remain locked on human approval."
+Last verification: "M054 final gate PASSED with live dev DB (65432), run on a clean schema BEFORE the commits: ruff format OK (147 files), ruff check OK, mypy OK (144 sources), pytest 713 passed / 0 skipped (8 new: tests/services/test_demo_seed.py); bandit -r -ll on src + workers = 0; pip-audit clean — no new dependencies, no migration, no API changes. Sequence this milestone: gate #1 green → workers/seed_demo.py run twice end-to-end (identical summaries: users=4 farmers=2 farms=2 plots=4 plot_states=4 signal_caches=2, proving idempotency live) → gate #2 FAILED 8 counting tests on the seed residue → migration round-trip auto-wiped the rows → gate #3 green (see Notes)."
+Last test result: "pytest = 713 passed (demo-seed 8, whatif-API 11, test_whatif 26, analysis 7, advisory-API 5, advisory 17, llm 24, decision 21, disease-engine 18, engines-health 38, recommend 22, risk 27, disease-provider 12, images-API 10, normalize 64, weather-live 57, satellite-live 40, soil 15, providers 15, state 14, weather-demo 14, satellite 14, farm-state-api 14, idor 13, plots-API 13, farms-API 15, farmers-API 15, auth 14, soil-ingestion 11, satellite-ingestion 11, weather-ingestion 10, farm-state-service 10, health 9, rbac 11, root 4, config 8, db 4, redact 3, errors 8, logging 4, security 17, user 6, farm-model 11, farmer-model 8, plot-model 11, migrations 2, smoke 2)"
 ```
 
 ## Checkpoint decisions (human-confirmed, 2026-09-26)
@@ -542,5 +542,44 @@ Last test result: "pytest = 705 passed (whatif-API 11, test_whatif 26, analysis 
   spec lands at EOF immediately after.
 - 2026-09-30 (M045): authz-before-body re-confirmed for POST (M035's
   structural lesson): anon gets 401 even when the body is valid, and a
-  malformed path id still yields pydantic's 422 — the read matrix does not
-  care which verb carries the argument.
+  malformed path id still yields pydantic's 422 — the read matrix does
+  not care which verb carries the argument.
+- 2026-09-30 (M054): **the CLI deliberately takes no `--password`
+  argument** (spec step said "argparse like the ingest workers") — a
+  secret on a command line is visible in the process list. The worker
+  reads `Settings.demo_password` (env `.env`) and prints the resolved
+  credentials once. Deviation recorded in the spec's completion notes;
+  when a later milestone wants CLI flags, follow M024's config
+  discipline instead of argv.
+- 2026-09-30 (M054): **determinism ≠ static timestamps.** uuid5 keys
+  make ids/emails byte-stable while `observed_at`/`planted_on` stay
+  seed-relative (now−30 min, today−N days) — a fixed absolute date
+  would go stale and M032's staleness gate would mark the seeded
+  signals dead. Tests pin the clock (`now=NOW`) so assertions are
+  exact; the live CLI uses the real clock so demos stay fresh.
+- 2026-09-30 (M054): M019's spec reserved `set_plot_state`/
+  `put_signals` for this milestone and they plugged in unchanged —
+  including their internal commits (seed commits once before the M019
+  writes, then those writers commit themselves). If a future writer
+  service gains a no-commit variant, the seed should switch to it
+  rather than wrapping commits in savepoints.
+- 2026-09-30 (M054): seed cleanup rides the FK cascade from the four
+  fixed `users` — farmers→farms→plots→states/signals all
+  ondelete=CASCADE (M011–M019), so one scoped DELETE replaces five.
+  Verified the cascade list with a grep of `ondelete="CASCADE"` before
+  writing the fixture; do the same before any future cascade-based
+  cleanup.
+- 2026-09-30 (M054): **seed residue breaks the gate, not just the
+  other way around (M012 inverted).** The CLI end-to-end check ran
+  after gate #1; gate #2 then failed 8 tests that count global rows
+  (officer/admin farm lists and every `ingest_*_for_all` sweep saw
+  the 2 demo farms: totals 3–4 vs expected 1–2). The suite's migration
+  round-trip wiped the residue at the end of the failing run, so the
+  cleanup DELETE deleted 0 rows and gate #3 passed clean (713).
+  **Rule: `workers/seed_demo` runs only AFTER the final gate, or the
+  four fixed user ids get one scoped DELETE before any gate.**
+- 2026-09-30 (M054): `plot` carries its own nullable `geo`/`area`
+  (M015) — the seed intentionally fills farm geometry only; plot
+  polygons remain "map it in the UI" data. If M056's spatial queries
+  ever need plot-level geometry for demos, that's a seed extension,
+  not a new milestone.
