@@ -67,7 +67,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M043 | Advisory API endpoint | P0 | M041 | done |
 | **What-if simulation** | | | | |
 | M044 | What-if simulation engine (hypothetical re-run of decision pipeline) | P0 | M039, M043 | done |
-| M045 | What-if simulation API | P0 | M044 | not-started |
+| M045 | What-if simulation API | P0 | M044 | done |
 | **Frontend** | | | | |
 | M046 | Frontend bootstrap (Vite+React+TS+Tailwind, auth flow) | P0 🔒 | M009 | not-started |
 | M047 | Farmer dashboard: farm/plot list + farm-state view | P0 | M046, M020 | not-started |
@@ -6628,6 +6628,56 @@ No disease/persistence (M049), no live model or key handling (M042,
 dashboard fields or frontend (M047/M050), no rate limiting (M055), no
 advisory caching or storage.
 
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED with live dev DB (65432) — ruff
+  format OK (139 files), ruff check OK, mypy OK (136 sources), pytest
+  **668 passed / 0 skipped** (+12: 7 analysis, 5 advisory-API). Bandit
+  `-r -ll` on `src` + `workers` = 0 findings; pip-audit clean. **No
+  new dependencies, no migration, no endpoint outside `/api/v1`.**
+- **Files:** created `src/engines/pipeline.py`, `src/services/analysis.py`,
+  `src/api/v1/advisory.py`, `tests/services/test_analysis.py`,
+  `tests/api/test_advisory.py`; modified `src/core/errors.py`
+  (`UpstreamUnavailable`), `src/api/v1/__init__.py` (router),
+  `src/engines/__init__.py` (`FarmAnalysis`/`run_analysis` exports).
+- **Findings:**
+  - **The pipeline had to exist before the endpoint did.** Nothing
+    assembled the four engines (M039's tests hand-chained them); the
+    order is now written down once in `run_analysis`, which is also
+    exactly what M044's what-if re-run will call after perturbing the
+    state. Four call sites would have been four chances to reorder.
+  - **One clock, threaded twice:** `analyze_farm` takes a single `now`
+    and passes it to *both* `get_farm_state` (signal age) and
+    `run_analysis` — otherwise `stale_families` and
+    `decision.computed_at` could describe different moments.
+  - **Caught by the API tests: the route forgot `await`.** The pure and
+    service tests passed while all five route tests failed —
+    `generate_advisory` is async (M041), and pydantic rejected the raw
+    coroutine with "input should be a valid Advisory". The layer split
+    earned its keep: the failure could only surface at the HTTP layer,
+    where the async boundary lives.
+  - **`Advisory.rendered` stays an in-process property.** It is not a
+    `computed_field`, so the JSON carries `text` and `caveats`
+    separately and clients join them; touching M041's DTO for a
+    cosmetic response field would have been the wrong milestone.
+  - **Disease is a parameter, not a hole:** `disease=()` because
+    nothing persists M037 assessments yet, but the pipe is tested with
+    a real assessment, so M049 supplies *data* — no plumbing changes.
+  - API-test seeding goes through the **services**
+    (`set_plot_state`/`put_signals`), not M020's routes: a test of the
+    advisory must not break when the state endpoints change.
+  - The blind-farm story is asserted end-to-end: empty cache →
+    `plots_with_unknown_factors == 1` → stance `monitor` → non-empty
+    `advisory.caveats` in the HTTP body — M041's honesty provably
+    survives serialization.
+  - The 502 is asserted *sanitized*: the stub raises "connection
+    refused to internal host" and the client message must not contain
+    it. `UpstreamUnavailable` needs no handler of its own — it is an
+    `AppError`, so M009's catch-all already renders it.
+- **Not built (per spec):** no persistence (M049), no live model
+  (M042, 🔒), no what-if input (M044/M045), no dashboard/frontend
+  (M047/M050), no rate limiting (M055), no advisory caching.
+
 ### M044 — What-if simulation engine (hypothetical re-run)
 
 **Priority:** P0 **Depends On:** M039, M043
@@ -6807,52 +6857,172 @@ scenario storage, no live model/key handling (M042, 🔒), no frontend
   persistence, no live model (M042, 🔒), no frontend (M046–M050), no
   new thresholds, no advisory text (M041).
 
+### M045 — What-if simulation API
+
+**Priority:** P0 **Depends On:** M044
+**Status:** done
+
+#### Objective
+`POST /api/v1/farms/{farm_id}/what-if` — authorize with M014's read
+matrix, load the farm's stored twin through a new authz-free service,
+run M044's `simulate_what_if` over the request's `overrides`, and
+return the full `WhatIfResult` (`baseline`, `hypothetical`, `changes`,
+`overrides_applied`, `simulated_families`). The first route whose
+input is *hypothetical* rather than a stored fact — and the first POST
+that computes instead of persists.
+
+#### Why This Milestone Exists
+M044 made the simulation callable in-process; M045 makes it reachable:
+"if I irrigate / if it doesn't rain, what changes?" answered over
+HTTP, which is exactly what the M051 UI will call. M043's spec
+deferred the body to here, and M051/M052 are dependency-blocked on
+this endpoint.
+
+#### Files Expected to Be Created
+- `src/services/whatif.py`
+- `src/api/v1/whatif.py`
+- `tests/api/test_whatif.py`
+
+#### Files Expected to Be Modified
+- `src/api/v1/__init__.py` (register the router)
+- `MILESTONES.md`, `ENGINEERING_STATE.md`
+
+#### Database Changes
+None — reads the M019 twin, writes nothing. Simulations are never
+stored (no scenario table; M051's UI keeps its own client-side state).
+
+#### API Changes
+- `POST /api/v1/farms/{farm_id}/what-if`
+  body `{"overrides": {"soil": {"soil_moisture_pct": 10.0}}}` → 200
+  `WhatIfResult`.
+- Authz = M014 read matrix, identical to M043: admin ✓, extension
+  officer ✓, owner farmer ✓, non-owner farmer → 404 (no existence
+  oracle), anon → 401, unknown farm → 404, malformed farm id → 422
+  (path validation, pydantic flavor).
+- Two 422 flavors, both deliberate (M020 precedent; unify in M055):
+  pydantic `{detail}` for *structural* errors (missing `overrides`,
+  a family that is not a mapping of numbers), AppError
+  `{error_code: validation_failed, message}` for *engine* rejections
+  (empty overrides, unknown family/knob, out-of-range, windowless
+  rainfall) carrying M044's message, which names the offending knob.
+
+#### External Dependencies
+None new — M019's loader, M031's normalizer, M044's engine, the
+existing FastAPI/auth stack.
+
+#### Design Decisions
+- **POST because the simulation takes input; read matrix because it
+  changes nothing.** A what-if is a *read with an argument*: it reads
+  stored state, computes, and writes nothing, so the write matrix,
+  ownership mutation rules and audit requirements do not apply. Rate
+  limiting stays M055's (this is the heaviest route — two full
+  pipeline runs per call).
+- **A dedicated service, not a reuse of `analyze_farm`.**
+  `analyze_farm` returns a `FarmAnalysis` and would run the baseline
+  once for nothing — and the route would need a *second* clock read to
+  then call `simulate_what_if`, breaking M043's one-clock rule.
+  `simulate_farm_what_if(session, farm_id, overrides, *, now=None,
+  disease=())` mirrors `analyze_farm` exactly: `get_farm_state` →
+  `normalize_signals` → engine, one `now` threaded through **both**
+  loads, and **no authz** (M019 standing rule — the route authorizes
+  before calling).
+- **Structure by pydantic, semantics by the engine.** The request
+  model checks only that `overrides` is a mapping of mappings;
+  everything a *catalogue* decides (which family, which knob, which
+  range, empty set, measurement window) stays in M044's
+  `simulate_what_if`, so `WHAT_IF_KNOBS` remains the single source of
+  truth and the route maps its `ValueError` → 422
+  `ValidationFailed(str(exc))` verbatim.
+- **The response is `WhatIfResult` verbatim** — no wrapper, no
+  server-side scenario id, and **no advisory prose** (human decision
+  2026-09-30: M050/M051 may call M041 for hypothetical prose
+  separately; keeping it out keeps this route provider-free).
+- **No provider calls ⇒ no 502 path.** Nothing here can raise
+  `ProviderError`; M043's `UpstreamUnavailable` remains the single
+  upstream-failure mapping for routes that actually call out.
+- **No persistence, no caching, `disease=()` documented** exactly as
+  M043 (nothing stores M037 assessments; M049 feeds them later — the
+  parameter already exists in the service signature).
+
+#### Implementation Steps
+1. Spec (here), roadmap → in-progress.
+2. `src/services/whatif.py`: `simulate_farm_what_if`.
+3. `src/api/v1/whatif.py` + router registration.
+4. `tests/api/test_whatif.py` (matrix, shape, knob-over-HTTP, 422s,
+   no-mutation).
+5. Gate, bandit, pip-audit, docs, state, two commits.
+
+#### Testing Criteria
+- [x] matrix: owner/officer/admin → 200; non-owner → 404
+  (`error_code=not_found`, no oracle); anon → 401; unknown farm → 404;
+  malformed farm id → 422.
+- [x] shape: body keys are exactly `{baseline, hypothetical, changes,
+  overrides_applied, simulated_families}`; both analyses carry the
+  same `computed_at`; `baseline.state.view.farm_id` equals the path
+  farm; `changes` echoes the applied knob.
+- [x] a knob over HTTP really moves the answer: dry-soil farm +
+  `soil.soil_moisture_pct: 45` → urgent action leaves via
+  `changes.actions_removed` (proves request → engine wiring end to
+  end).
+- [x] 422s: missing `overrides` and a non-mapping family → pydantic
+  `{detail}`; empty `overrides`, unknown family, unknown knob,
+  out-of-range value, windowless rainfall →
+  `{error_code: validation_failed}` with the knob named in `message`.
+- [x] no mutation: the stored signal cache is byte-identical after the
+  POST (the simulation never writes).
+- [x] no advisory: the response carries no `advisory` key (M041 is
+  never called).
+
+#### Verification Commands
+```bash
+uv run pytest tests/api/test_whatif.py -v
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+#### Definition of Done
+Standard checklist (Section 5).
+
+#### What Must NOT Be Implemented Here
+No advisory prose (M050/M051 call M041 explicitly — human decision
+2026-09-30), no scenario persistence or storage, no rate limiting
+(M055), no UI (M051), no live model (M042, 🔒), no frontend
+(M046–M050), no new engine rules or thresholds (M044 owns the knobs),
+no response caching.
+
 #### Verification & Notes (added on completion)
 
 - **Gate:** `scripts/check.ps1` PASSED with live dev DB (65432) — ruff
-  format OK (139 files), ruff check OK, mypy OK (136 sources), pytest
-  **668 passed / 0 skipped** (+12: 7 analysis, 5 advisory-API). Bandit
-  `-r -ll` on `src` + `workers` = 0 findings; pip-audit clean. **No
-  new dependencies, no migration, no endpoint outside `/api/v1`.**
-- **Files:** created `src/engines/pipeline.py`, `src/services/analysis.py`,
-  `src/api/v1/advisory.py`, `tests/services/test_analysis.py`,
-  `tests/api/test_advisory.py`; modified `src/core/errors.py`
-  (`UpstreamUnavailable`), `src/api/v1/__init__.py` (router),
-  `src/engines/__init__.py` (`FarmAnalysis`/`run_analysis` exports).
+  format OK (144 files), ruff check OK, mypy OK (141 sources), pytest
+  **705 passed / 0 skipped** (+11: `tests/api/test_whatif.py`, first
+  run green). Bandit `-r -ll` on `src` + `workers` = 0 findings;
+  pip-audit clean. **No new dependencies, no migration, no writes, no
+  provider calls.**
+- **Files:** created `src/services/whatif.py`, `src/api/v1/whatif.py`,
+  `tests/api/test_whatif.py`; modified `src/api/v1/__init__.py`
+  (router), `MILESTONES.md`, `ENGINEERING_STATE.md`. Also moved M043's
+  completion notes (left stranded after M044's section) back under
+  M043's spec.
 - **Findings:**
-  - **The pipeline had to exist before the endpoint did.** Nothing
-    assembled the four engines (M039's tests hand-chained them); the
-    order is now written down once in `run_analysis`, which is also
-    exactly what M044's what-if re-run will call after perturbing the
-    state. Four call sites would have been four chances to reorder.
-  - **One clock, threaded twice:** `analyze_farm` takes a single `now`
-    and passes it to *both* `get_farm_state` (signal age) and
-    `run_analysis` — otherwise `stale_families` and
-    `decision.computed_at` could describe different moments.
-  - **Caught by the API tests: the route forgot `await`.** The pure and
-    service tests passed while all five route tests failed —
-    `generate_advisory` is async (M041), and pydantic rejected the raw
-    coroutine with "input should be a valid Advisory". The layer split
-    earned its keep: the failure could only surface at the HTTP layer,
-    where the async boundary lives.
-  - **`Advisory.rendered` stays an in-process property.** It is not a
-    `computed_field`, so the JSON carries `text` and `caveats`
-    separately and clients join them; touching M041's DTO for a
-    cosmetic response field would have been the wrong milestone.
-  - **Disease is a parameter, not a hole:** `disease=()` because
-    nothing persists M037 assessments yet, but the pipe is tested with
-    a real assessment, so M049 supplies *data* — no plumbing changes.
-  - API-test seeding goes through the **services**
-    (`set_plot_state`/`put_signals`), not M020's routes: a test of the
-    advisory must not break when the state endpoints change.
-  - The blind-farm story is asserted end-to-end: empty cache →
-    `plots_with_unknown_factors == 1` → stance `monitor` → non-empty
-    `advisory.caveats` in the HTTP body — M041's honesty provably
-    survives serialization.
-  - The 502 is asserted *sanitized*: the stub raises "connection
-    refused to internal host" and the client message must not contain
-    it. `UpstreamUnavailable` needs no handler of its own — it is an
-    `AppError`, so M009's catch-all already renders it.
-- **Not built (per spec):** no persistence (M049), no live model
-  (M042, 🔒), no what-if input (M044/M045), no dashboard/frontend
-  (M047/M050), no rate limiting (M055), no advisory caching.
+  - **A dedicated service, not `analyze_farm` reuse** — the obvious
+    reuse would have run the baseline twice *and* needed a second
+    clock read in the route, breaking M043's one-clock rule. The
+    service mirrors `analyze_farm` line for line (load → normalize →
+    hand to engine) with `simulate_what_if` where `run_analysis` was.
+  - **The two 422 flavors were both exercised in one file:**
+    pydantic `{detail}` fires for structural problems (missing key,
+    family not a mapping) *before* the handler runs; AppError
+    `{error_code: validation_failed}` carries M044's engine message
+    verbatim — no sanitization needed because the message is about
+    the caller's own input and already names the knob.
+  - **The end-to-end knob test is the seam test:** dry soil → 45 %
+    over HTTP asserts `stance == act_now` on the baseline *and* the
+    urgent action in `actions_removed`, proving body → request model
+    → service → engine → response without inspecting internals.
+  - **Read matrix over POST raised no new questions:** a simulation
+    is a read with an argument, so officer reads and non-owner 404s
+    behave exactly as M043's GET — the matrix test is byte-for-byte
+    the same expectations with a different verb.
+- **Not built (per spec):** no advisory prose (M050/M051), no scenario
+  storage, no rate limiting (M055), no UI (M051), no live model
+  (M042, 🔒), no frontend (M046–M050), no engine rules (M044 owns
+  the knobs), no caching.

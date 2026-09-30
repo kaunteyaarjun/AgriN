@@ -14,6 +14,7 @@ from src.api.v1.farmers import router as farmers_router
 from src.api.v1.farms import router as farms_router
 from src.api.v1.images import router as images_router
 from src.api.v1.plots import router as plots_router
+from src.api.v1.whatif import router as whatif_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -24,6 +25,7 @@ api_router.include_router(plots_router)
 api_router.include_router(images_router)
 api_router.include_router(farm_state_router)
 api_router.include_router(advisory_router)
+api_router.include_router(whatif_router)
 
 
 @api_router.get("/ping", tags=["meta"])
