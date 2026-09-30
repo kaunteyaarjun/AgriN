@@ -1,0 +1,48 @@
+{
+  "theme": "BRICS Agricultural Cooperation & Climate-Resilient Food Production",
+  "initiative": "AgriN Digital Public Good Network",
+  "version": "1.0.0",
+  "interoperability_standard": "OGC / STAC / GeoJSON v1.0",
+  "member_states": [
+    {
+      "code": "IN",
+      "country": "India",
+      "research_institute": "ICAR — Indian Council of Agricultural Research",
+      "focus_crops": ["Basmati Rice", "Wheat", "Millets", "Chickpea"],
+      "soil_health_model": "Indo-Gangetic Alluvial SOC Index",
+      "station_count": 1420
+    },
+    {
+      "code": "BR",
+      "country": "Brazil",
+      "research_institute": "EMBRAPA — Empresa Brasileira de Pesquisa Agropecuária",
+      "focus_crops": ["Soybeans", "Maize", "Sugarcane"],
+      "soil_health_model": "Cerrado Oxisol Direct Seeding System",
+      "station_count": 980
+    },
+    {
+      "code": "CN",
+      "country": "China",
+      "research_institute": "CAAS — Chinese Academy of Agricultural Sciences",
+      "focus_crops": ["Maize", "Soybean", "Rice"],
+      "soil_health_model": "Songnen Plain Black Soil Organic Carbon Conservation",
+      "station_count": 1840
+    },
+    {
+      "code": "RU",
+      "country": "Russia",
+      "research_institute": "Vavilov All-Russian Institute of Plant Genetic Resources",
+      "focus_crops": ["Winter Wheat", "Barley", "Sunflower"],
+      "soil_health_model": "Chernozem Steppe Humus Preservation",
+      "station_count": 760
+    },
+    {
+      "code": "ZA",
+      "country": "South Africa",
+      "research_institute": "ARC — Agricultural Research Council of South Africa",
+      "focus_crops": ["Maize", "Sorghum", "Sunflower"],
+      "soil_health_model": "Semi-Arid Highveld Water Conservation",
+      "station_count": 420
+    }
+  ]
+}

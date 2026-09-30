@@ -1,0 +1,58 @@
+[
+  {
+    "id": "scn-001",
+    "timestamp": 1727712000000,
+    "plant": "Wheat (Triticum aestivum)",
+    "disease": "Stripe Rust / Yellow Rust (Puccinia striiformis)",
+    "pathogen_type": "Fungal",
+    "confidence": 98.4,
+    "severity": "Severe",
+    "farmer": "Ramesh Patel",
+    "plotId": "KNL-01",
+    "country": "India",
+    "status": "treated",
+    "action": "Applied Propiconazole 25% EC @ 1.0 ml/L along windward perimeter."
+  },
+  {
+    "id": "scn-002",
+    "timestamp": 1727715600000,
+    "plant": "Tomato (Solanum lycopersicum)",
+    "disease": "Early Blight (Alternaria solani)",
+    "pathogen_type": "Fungal",
+    "confidence": 96.8,
+    "severity": "Moderate",
+    "farmer": "Ramesh Patel",
+    "plotId": "KNL-02",
+    "country": "India",
+    "status": "monitored",
+    "action": "Lower foliage pruned; Bacillus subtilis bio-spray applied."
+  },
+  {
+    "id": "scn-003",
+    "timestamp": 1727719200000,
+    "plant": "Soybean (Glycine max)",
+    "disease": "Asian Soybean Rust (Phakopsora pachyrhizi)",
+    "pathogen_type": "Fungal",
+    "confidence": 95.2,
+    "severity": "Early",
+    "farmer": "João Silva",
+    "plotId": "MT-5107",
+    "country": "Brazil",
+    "status": "quarantined",
+    "action": "Preventive azoxystrobin spray scheduled prior to precipitation."
+  },
+  {
+    "id": "scn-004",
+    "timestamp": 1727722800000,
+    "plant": "Maize (Zea mays)",
+    "disease": "Northern Corn Leaf Blight (Exserohilum turcicum)",
+    "pathogen_type": "Fungal",
+    "confidence": 94.6,
+    "severity": "Moderate",
+    "farmer": "Chen Wei",
+    "plotId": "HLJ-2024",
+    "country": "China",
+    "status": "treated",
+    "action": "Inter-row ventilation improved; residue incorporated into black soil."
+  }
+]
