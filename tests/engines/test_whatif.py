@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
 
 import pytest
 from src.engines import WHAT_IF_KNOBS, WhatIfResult, run_analysis, simulate_what_if
@@ -150,7 +149,7 @@ def test_echoes_the_applied_overrides() -> None:
     ("family", "field", "value"),
     [
         ("weather", "temperature_c", 45.0),
-        ("weather", "rainfall_mm_24h", 0.0),
+        ("weather", "rainfall_mm_24h", 70.0),
         ("soil", "soil_moisture_pct", 10.0),
         ("soil", "ph", 4.0),
         ("soil", "nitrogen_kg_ha", 1.0),
@@ -158,7 +157,7 @@ def test_echoes_the_applied_overrides() -> None:
     ],
 )
 def test_every_catalogued_knob_moves_the_answer(family: str, field: str, value: float) -> None:
-    assert (family, field) in WHAT_IF_KNOBS  # the knob is catalogue-backed
+    assert family in WHAT_IF_KNOBS and field in WHAT_IF_KNOBS[family]  # catalogue-backed
     result = simulate_what_if(_state(), {family: {field: value}}, now=NOW)
     assert _moved(result), f"{family}.{field} changed nothing"
 

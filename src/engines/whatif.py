@@ -139,8 +139,10 @@ def _apply_overrides(
 
     if "rainfall_mm_24h" in applied.get("weather", {}):
         weather = signals.weather
-        if weather is not None and weather.rainfall_mm is not None and (
-            weather.rainfall_mm_per_day is None
+        if (
+            weather is not None
+            and weather.rainfall_mm is not None
+            and (weather.rainfall_mm_per_day is None)
         ):
             raise ValueError(
                 "weather.rainfall_mm_24h cannot be simulated: the measurement window is "
@@ -152,7 +154,9 @@ def _apply_overrides(
             "signals": SignalCacheView(
                 signals=doc,
                 refreshed_at=refreshed_at,
-                age_seconds=None if refreshed_at is None else int((moment - refreshed_at).total_seconds()),
+                age_seconds=None
+                if refreshed_at is None
+                else int((moment - refreshed_at).total_seconds()),
             )
         }
     )

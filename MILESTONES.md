@@ -66,7 +66,7 @@ alone). Everything else proceeds autonomously via the Engineering Loop
 | M042 | LLM live provider integration | P0 🔒 | M040 | not-started |
 | M043 | Advisory API endpoint | P0 | M041 | done |
 | **What-if simulation** | | | | |
-| M044 | What-if simulation engine (hypothetical re-run of decision pipeline) | P0 | M039, M043 | in-progress |
+| M044 | What-if simulation engine (hypothetical re-run of decision pipeline) | P0 | M039, M043 | done |
 | M045 | What-if simulation API | P0 | M044 | not-started |
 | **Frontend** | | | | |
 | M046 | Frontend bootstrap (Vite+React+TS+Tailwind, auth flow) | P0 🔒 | M009 | not-started |
@@ -6631,7 +6631,7 @@ advisory caching or storage.
 ### M044 — What-if simulation engine (hypothetical re-run)
 
 **Priority:** P0 **Depends On:** M039, M043
-**Status:** in-progress
+**Status:** done
 
 #### Objective
 `src/engines/whatif.py` — `simulate_what_if(state, overrides, *,
@@ -6724,27 +6724,27 @@ None new — pydantic + M031's normalizer + M043's `run_analysis`.
 5. Gate, bandit, pip-audit, docs, state, two commits.
 
 #### Testing Criteria
-- [ ] `simulate_what_if` is pure and deterministic (same inputs →
+- [x] `simulate_what_if` is pure and deterministic (same inputs →
   identical result), reads no clock beyond `now`, touches no DB/network;
   the untouched baseline equals `run_analysis(state, ..., now=now)`.
-- [ ] both runs share one clock (`computed_at == now` for all eight
+- [x] both runs share one clock (`computed_at == now` for all eight
   engine answers) and `changes` compares like for like.
-- [ ] every knob is proven to move an engine answer (a sweep asserting
+- [x] every knob is proven to move an engine answer (a sweep asserting
   each of the six changes health/risk/decision outcome), and an
   override equal to the current value yields an all-zero diff.
-- [ ] validation: unknown family, unknown field, non-numeric value,
+- [x] validation: unknown family, unknown field, non-numeric value,
   `bool`, out-of-range value (pH 20, ndvi 2, temp 100, moisture −5),
   empty overrides, family present-but-not-a-mapping, and rainfall on a
   family with no measurement window — each a `ValueError` naming the
   offending knob.
-- [ ] a materialized family gets `observed_at == now` and `source is
+- [x] a materialized family gets `observed_at == now` and `source is
   None`; a pre-existing family keeps its source; `simulated_families`
   lists exactly the touched families.
-- [ ] staleness interaction: a stale weather baseline + a temperature
+- [x] staleness interaction: a stale weather baseline + a temperature
   knob → the family leaves `stale_families` in the hypothetical (the
   re-stamp), and `risk_score_delta` reflects the removed staleness
   points.
-- [ ] diff: dry-soil → irrigated hypothetical shows the urgent action
+- [x] diff: dry-soil → irrigated hypothetical shows the urgent action
   leaving `actions_removed` and `action_counts["urgent"]` dropping.
 
 #### Verification Commands
@@ -6761,6 +6761,51 @@ No endpoint or request model (M045), no UI (M051), no persistence or
 scenario storage, no live model/key handling (M042, 🔒), no frontend
 (M046–M050), no new agronomic thresholds (the knobs change inputs only
 — every rule stays in M032/M033/M034/M039), no advisory text (M041).
+
+#### Verification & Notes (added on completion)
+
+- **Gate:** `scripts/check.ps1` PASSED with live dev DB (65432) — ruff
+  format OK (141 files), ruff check OK, mypy OK (138 sources), pytest
+  **694 passed / 0 skipped** (+26: `tests/engines/test_whatif.py`).
+  Bandit `-r -ll` on `src` + `workers` = 0 findings; pip-audit clean.
+  **No new dependencies, no migration, no endpoint, no DB/network I/O
+  in the engine.**
+- **Files:** created `src/engines/whatif.py`, `tests/engines/test_whatif.py`;
+  modified `src/engines/__init__.py` (exports + docstring line),
+  `MILESTONES.md`, `ENGINEERING_STATE.md`.
+- **Findings:**
+  - **The milestone was pushed before its gate ran — and the gate
+    failed.** Three commits landed on `origin/master` with the generic
+    message `commit`, and both failures they carried were caught only
+    at this session's gate: (a) a 107-char line in `whatif.py`
+    (ruff format), (b) `assert (family, field) in WHAT_IF_KNOBS`
+    checking tuple membership on a *nested* dict — always false, so
+    all six knob-sweep params failed. **House rule from now on: run
+    `scripts/check.ps1` before every push, and name the commit
+    `M0XX: <objective>` (the messages above cannot be rewritten — the
+    commits were already pushed).**
+  - **The sweep found a fixture that couldn't move:** rainfall
+    `0.0` vs the baseline `5.0` mm/day are both below M032's 30 mm/day
+    attention threshold, so the "knob moves an answer" assertion
+    failed *correctly*. Fixed by sweeping at `70.0` (above the 60
+    stress threshold → `heavy_rain` hazard). When a knob "does
+    nothing", suspect the fixture before the engine — but also
+    remember the spec's rule: a knob is only in `WHAT_IF_KNOBS` if a
+    real value can move a real answer.
+  - **The rainfall window check is post-normalization by design:**
+    `_apply_overrides` validates ranges *before* normalize (so
+    out-of-range never becomes `None`), but the window check must run
+    *after* (only `normalize_signals` knows the source's timeframe).
+    Two-phase validation is what lets `rainfall_mm_24h` fail loudly
+    instead of silently degrading to `unknown`.
+  - **Re-stamping solves the classic silent no-op:** without
+    `observed_at = now` on an overridden family, M032's staleness gate
+    would discard exactly the value the user just changed. Tested both
+    ways: baseline stale → hypothetical fresh, and `risk_score_delta`
+    shows the removed staleness points.
+- **Not built (per spec):** no endpoint (M045 next), no UI (M051), no
+  persistence, no live model (M042, 🔒), no frontend (M046–M050), no
+  new thresholds, no advisory text (M041).
 
 #### Verification & Notes (added on completion)
 
