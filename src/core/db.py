@@ -41,8 +41,24 @@ def get_engine() -> AsyncEngine:
         raise RuntimeError(
             "database_url is not configured; set DATABASE_URL before using the database."
         )
+    connect_args: dict[str, object] = {}
+    db_url = settings.database_url
+    if "supabase.co" in db_url or "ssl=require" in db_url or "sslmode=require" in db_url:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        connect_args["ssl"] = ctx
+        db_url = (
+            db_url.replace("?ssl=require", "")
+            .replace("&ssl=require", "")
+            .replace("?sslmode=require", "")
+            .replace("&sslmode=require", "")
+        )
+
     return create_async_engine(
-        settings.database_url,
+        db_url,
+        connect_args=connect_args,
         pool_pre_ping=True,
         pool_size=POOL_SIZE,
         max_overflow=MAX_OVERFLOW,

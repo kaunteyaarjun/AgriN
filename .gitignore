@@ -36,3 +36,14 @@ var/
 Thumbs.db
 # Local AI-tooling file (M057: workflows ARE tracked - see MILESTONES spec)
 .github/copilot-instructions.md
+
+# Non-essential submission exclusions
+MILESTONES.md
+ENGINEERING_STATE.md
+demo_video/
+*.zip
+*.webm
+*.mp4
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.vite/

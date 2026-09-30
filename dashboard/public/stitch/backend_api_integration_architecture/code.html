@@ -1,0 +1,641 @@
+﻿<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } ::-webkit-scrollbar { display: none; }</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "surface-bright": "#faf8ff", "secondary-fixed": "#ffdcc3", "primary-fixed": "#85f8c4", "surface-container-low": "#f2f3ff", "on-surface": "#131b2e", "surface-container-high": "#e2e7ff", "surface-container-highest": "#dae2fd", "on-primary-container": "#f5fff7", "surface": "#faf8ff", "tertiary-fixed": "#cce5ff", "error": "#ba1a1a", "tertiary-fixed-dim": "#93ccff", "inverse-on-surface": "#eef0ff", "on-secondary-fixed-variant": "#6e3900", "primary-fixed-dim": "#68dba9", "inverse-primary": "#68dba9", "secondary-fixed-dim": "#ffb77d", "surface-variant": "#dae2fd", "background": "#faf8ff", "secondary": "#904d00", "on-error-container": "#93000a", "on-primary-fixed-variant": "#005137", "on-secondary": "#ffffff", "outline-variant": "#bccac0", "tertiary": "#006194", "on-tertiary": "#ffffff", "surface-container": "#eaedff", "on-secondary-container": "#663500", "secondary-container": "#fe932c", "on-primary": "#ffffff", "primary-container": "#00855d", "surface-container-lowest": "#ffffff", "outline": "#6d7a72", "inverse-surface": "#283044", "on-error": "#ffffff", "on-tertiary-fixed-variant": "#004b73", "surface-dim": "#d2d9f4", "on-tertiary-container": "#fdfcff", "primary": "#006948", "tertiary-container": "#007bb9", "on-tertiary-fixed": "#001d31", "error-container": "#ffdad6", "on-primary-fixed": "#002114", "surface-tint": "#006c4a", "on-secondary-fixed": "#2f1500", "on-background": "#131b2e", "on-surface-variant": "#3d4a42" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "gutter-desktop": "2rem", "gutter": "1rem", "space-sm": "0.5rem", "margin": "1rem", "space-md": "1rem", "gutter-tablet": "1.5rem", "space-xs": "0.25rem", "margin-desktop": "3rem", "space-lg": "1.5rem", "space-xl": "2.5rem", "margin-tablet": "2rem" }, "fontFamily": { "headline-md": [ "Plus Jakarta Sans" ], "body-md": [ "Inter" ], "metric-unit": [ "Inter" ], "display-hero": [ "Plus Jakarta Sans" ], "label-md": [ "Inter" ], "headline-lg-mobile": [ "Plus Jakarta Sans" ], "label-caps": [ "Inter" ], "body-sm": [ "Inter" ], "headline-sm": [ "Plus Jakarta Sans" ], "headline-lg": [ "Plus Jakarta Sans" ], "label-lg": [ "Inter" ], "metric-display": [ "Plus Jakarta Sans" ], "body-lg": [ "Inter" ], "display-hero-mobile": [ "Plus Jakarta Sans" ] }, "fontSize": { "headline-md": [ "22px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "700" } ], "body-md": [ "15px", { "lineHeight": "22px", "fontWeight": "400" } ], "metric-unit": [ "14px", { "lineHeight": "18px", "letterSpacing": "0.04em", "fontWeight": "600" } ], "display-hero": [ "48px", { "lineHeight": "52px", "letterSpacing": "-0.03em", "fontWeight": "800" } ], "label-md": [ "12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600" } ], "headline-lg-mobile": [ "26px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700" } ], "label-caps": [ "11px", { "lineHeight": "14px", "letterSpacing": "0.08em", "fontWeight": "700" } ], "body-sm": [ "13px", { "lineHeight": "18px", "fontWeight": "400" } ], "headline-sm": [ "18px", { "lineHeight": "24px", "fontWeight": "600" } ], "headline-lg": [ "32px", { "lineHeight": "38px", "letterSpacing": "-0.02em", "fontWeight": "700" } ], "label-lg": [ "14px", { "lineHeight": "18px", "letterSpacing": "0.01em", "fontWeight": "600" } ], "metric-display": [ "40px", { "lineHeight": "44px", "letterSpacing": "-0.03em", "fontWeight": "800" } ], "body-lg": [ "17px", { "lineHeight": "26px", "fontWeight": "400" } ], "display-hero-mobile": [ "36px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "800" } ] } } } }</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><header class="fixed top-0 left-0 right-0 h-16 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-50 flex items-center justify-between px-space-lg"><div class="flex items-center gap-space-lg"><div class="flex items-center gap-space-sm"><img alt="Brand logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1V2lT0OyhRrxsOg38auIcH2z7Okcvlp-UkP6Yw66HmTpM8E8bcXLh8t_11PgdFht6QiX4fQJJf6hHFgIA820Vh2Tg2SjHknQCJPCTMlQQ9oJUdE-5_dEN4BSqMrVaVZWR-IVHvNUHoozLaMM2HYmQlH0gU9Tio2QPBFgaVLZm1N0WWmACtIz9L7OIA3QXJKNXGoMQPfJDhdm7yWwIILs5yJ7417kTvEgAePCqIJoAbMM4ERyGdzpP0F0aeP"><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-primary leading-none tracking-tight">AgriN Enterprise</span><span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider mt-0.5">Agronomy Command Center</span></div></div><div class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full clay-pill-neutral"><span class="flex h-2.5 w-2.5 rounded-full bg-primary animate-pulse"></span><span class="font-label-md text-label-md text-on-surface font-medium">Karnal &amp; Kurukshetra Agronomic Division • Sentinel-2 Active</span></div></div><div class="flex items-center gap-space-md flex-1 max-w-xl mx-space-lg"><div class="relative w-full"><span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span><input class="sunken-search w-full h-10 pl-10 pr-4 font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none transition-all" placeholder="Search farmers, plot cadastral IDs, pathogens, or sensors..." type="text"></div></div><div class="flex items-center gap-space-md"><div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#fde8e8] text-[#9b1c1c] shadow-[2px_2px_6px_rgba(230,100,100,0.15),-2px_-2px_6px_#ffffff] border border-white"><span class="w-2 h-2 rounded-full bg-[#e02424] animate-ping"></span><span class="font-label-caps text-label-caps uppercase font-bold tracking-wide">Outbreaks: 26 Active</span></div><div class="flex items-center gap-space-sm pl-space-sm border-l border-outline-variant/30"><div class="text-right hidden sm:block"><div class="font-label-lg text-label-lg text-on-surface leading-tight font-semibold">Dr. Ananya Sharma</div><div class="font-label-caps text-label-caps text-on-surface-variant">Lead Agronomist • Karnal</div></div><div class="w-9 h-9 rounded-full clay-btn-mint flex items-center justify-center shrink-0 cursor-pointer"><span class="material-symbols-outlined text-[18px]">person</span></div></div></div></header><aside class="fixed left-0 top-16 bottom-0 w-72 bg-surface-container-low/70 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex flex-col justify-between p-space-md"><div class="space-y-space-md"><div class="px-space-sm pt-space-xs"><span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider font-semibold">Field Operational Modules</span></div><nav class="space-y-2"><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-2xl text-on-surface-variant hover:clay-pill-neutral transition-all font-label-lg text-label-lg" href="#"><span class="material-symbols-outlined text-[20px]">map</span>Geospatial Command &amp; Map</a><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-2xl text-on-surface-variant hover:clay-pill-neutral transition-all font-label-lg text-label-lg" href="#"><span class="material-symbols-outlined text-[20px]">coronavirus</span>Disease Triage Queue</a><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-2xl text-on-surface-variant hover:clay-pill-neutral transition-all font-label-lg text-label-lg" href="#"><span class="material-symbols-outlined text-[20px]">groups</span>Farmer &amp; Plot Registry</a><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-2xl text-on-surface-variant hover:clay-pill-neutral transition-all font-label-lg text-label-lg" href="#"><span class="material-symbols-outlined text-[20px]">nest_multi_room</span>Telemetry &amp; Weather Stations</a><a aria-current="page" class="flex items-center gap-space-sm px-space-md py-2.5 rounded-2xl clay-btn-mint font-bold transition-all" href="#"><span class="material-symbols-outlined text-[20px]">terminal</span>API &amp; System Architecture</a></nav></div><div class="ceramic-card p-space-md"><div class="flex items-center justify-between mb-space-xs"><span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-semibold">Field Radio Sync</span><span class="px-2 py-0.5 rounded-full clay-btn-mint text-[11px] font-bold font-mono">99.8% Online</span></div><div class="w-full bg-[#e3eae6] h-2 rounded-full overflow-hidden ceramic-card-inset p-0.5 mt-2"><div class="bg-primary h-full w-[99.8%] rounded-full"></div></div><div class="flex items-center justify-between mt-space-sm pt-space-xs text-outline border-t border-outline-variant/20"><span class="font-label-caps text-label-caps">LoRaWAN Hub #04</span><span class="font-label-caps text-label-caps text-primary font-bold">Synced 12s ago</span></div></div></aside><div class="pl-72"><main class="w-full pt-16 bg-surface px-space-lg min-h-screen"><div class="flex flex-col w-full pb-space-xl">
+<!-- Top Utility Bar: Engineering Context & Latency Telemetry -->
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md mb-space-lg">
+<div class="flex flex-col">
+<div class="flex items-center gap-space-xs mb-1">
+<span class="font-label-caps text-label-caps text-primary uppercase tracking-wider">Kernel Architecture Spec</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline-variant/60"></span>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest font-mono">v1.4.2-prod-haryana</span>
+</div>
+<div class="flex items-center gap-space-md">
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">API Gateway &amp; PostGIS Pipeline</h1>
+<span class="px-space-sm py-0.5 rounded-full bg-surface-container-high text-primary font-label-md text-label-md font-mono">HTTP/2 TLS 1.3</span>
+</div>
+</div>
+<!-- Cluster Operational Telemetry -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-space-sm p-1.5 rounded-2xl bg-[#edf2ef] ceramic-card-inset"><div class="ceramic-card px-space-md py-space-xs"><span class="font-label-caps text-label-caps text-outline block font-semibold">Avg Latency (p99)</span><span class="font-headline-sm text-headline-sm text-primary font-mono font-bold">42ms</span></div><div class="ceramic-card px-space-md py-space-xs"><span class="font-label-caps text-label-caps text-outline block font-semibold">PostGIS Spatial RPS</span><span class="font-headline-sm text-headline-sm text-on-surface font-mono font-bold">1,840</span></div><div class="ceramic-card px-space-md py-space-xs"><span class="font-label-caps text-label-caps text-outline block font-semibold">Sentinel-2 Ingest</span><span class="font-headline-sm text-headline-sm text-secondary font-mono font-bold">0.8s Sync</span></div><div class="ceramic-card px-space-md py-space-xs flex flex-col justify-center"><span class="font-label-caps text-label-caps text-outline block font-semibold">Gateway Status</span><span class="inline-flex items-center gap-1.5 font-label-md text-label-md text-[#065f46] font-bold"><span class="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></span>Operational</span></div></div>
+</div>
+<!-- Primary Architecture Visual Stack Split -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg mb-space-xl">
+<!-- Left Col: Endpoint Registry Explorer (7 Cols) -->
+<div class="xl:col-span-7 flex flex-col gap-space-md">
+<!-- Section Header with Search & Filter -->
+<div class="flex items-center justify-between ceramic-card p-space-md"><div class="flex items-center gap-space-sm"><div class="w-10 h-10 rounded-2xl clay-pill-neutral flex items-center justify-center text-primary"><span class="material-symbols-outlined text-[20px]">hub</span></div><div><div class="flex items-center gap-2"><span class="font-headline-sm text-headline-sm text-on-surface font-bold">RESTful Endpoint Directory</span><span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold clay-btn-mint font-mono">8 active</span></div><p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">RPC &amp; spatial microservices gateway documentation</p></div></div><div class="flex items-center gap-2.5"><span class="text-[11px] font-mono uppercase tracking-wider text-outline px-2.5 py-1 ceramic-card-inset rounded-full font-semibold">Base: /api/v1</span><button class="px-4 py-1.5 rounded-full clay-btn-mint font-label-md text-label-md font-bold transition-all" id="filter-all-btn">All</button></div></div>
+<!-- Endpoint Cards List -->
+<div class="space-y-space-sm" id="endpoint-list">
+<!-- Route 1: Auth Login -->
+<div class="endpoint-card bg-surface-container-lowest p-space-md rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer group" onclick="loadSandboxRoute('POST', '/v1/auth/login', 'auth')">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-secondary-container/20 text-secondary-container">POST</span>
+<span class="font-mono font-bold text-on-surface text-body-md group-hover:text-primary transition-colors">/v1/auth/login</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-2 py-0.5 rounded bg-surface-container font-label-caps text-label-caps text-on-surface-variant">OAuth2 / JWT</span>
+<span class="material-symbols-outlined text-outline text-[18px] group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+</div>
+</div>
+<div class="mt-space-xs flex items-center justify-between">
+<p class="font-body-sm text-body-sm text-on-surface-variant">Issue access tokens with field officer, agronomist, or grower scoped RBAC.</p>
+<span class="font-mono font-label-caps text-label-caps text-outline">~18ms</span>
+</div>
+</div>
+<!-- Route 2: Farms -->
+<div class="endpoint-card bg-surface-container-lowest p-space-md rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer group" onclick="loadSandboxRoute('GET', '/v1/farms', 'farms')">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-primary/10 text-primary">GET</span>
+<span class="font-mono font-bold text-on-surface text-body-md group-hover:text-primary transition-colors">/v1/farms</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-2 py-0.5 rounded bg-surface-container font-label-caps text-label-caps text-on-surface-variant">Profile &amp; Holdings</span>
+<span class="material-symbols-outlined text-outline text-[18px] group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+</div>
+</div>
+<div class="mt-space-xs flex items-center justify-between">
+<p class="font-body-sm text-body-sm text-on-surface-variant">Lists registered farmer demographics, aggregate acreage, and sector clusters.</p>
+<span class="font-mono font-label-caps text-label-caps text-outline">~32ms</span>
+</div>
+</div>
+<!-- Route 3: Farms Plots (PostGIS) -->
+<div class="endpoint-card bg-surface-container-lowest p-space-md rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer group" onclick="loadSandboxRoute('GET', '/v1/farms/{id}/plots', 'plots')">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-primary/10 text-primary">GET</span>
+<span class="font-mono font-bold text-on-surface text-body-md group-hover:text-primary transition-colors">/v1/farms/{id}/plots</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-2 py-0.5 rounded bg-primary-fixed/40 text-on-primary-fixed-variant font-label-caps text-label-caps font-bold">PostGIS GeoJSON</span>
+<span class="material-symbols-outlined text-outline text-[18px] group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+</div>
+</div>
+<div class="mt-space-xs flex items-center justify-between">
+<p class="font-body-sm text-body-sm text-on-surface-variant">Polygon cadastral coordinates (EPSG:4326), crop phenology, and soil zones.</p>
+<span class="font-mono font-label-caps text-label-caps text-outline">~45ms</span>
+</div>
+</div>
+<!-- Route 4: Farms State (Telemetry & Sentinel) -->
+<div class="endpoint-card bg-surface-container-lowest p-space-md rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer group" onclick="loadSandboxRoute('GET', '/v1/farms/{id}/state', 'state')">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-primary/10 text-primary">GET</span>
+<span class="font-mono font-bold text-on-surface text-body-md group-hover:text-primary transition-colors">/v1/farms/{id}/state</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-2 py-0.5 rounded bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-caps text-label-caps">Sentinel-2 Multi-spectral</span>
+<span class="material-symbols-outlined text-outline text-[18px] group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+</div>
+</div>
+<div class="mt-space-xs flex items-center justify-between">
+<p class="font-body-sm text-body-sm text-on-surface-variant">Live micrometeorology, root-zone TDR soil moisture, and calibrated NDVI/EVI rasters.</p>
+<span class="font-mono font-label-caps text-label-caps text-outline">~68ms</span>
+</div>
+</div>
+<!-- Route 5: Advisory LLM -->
+<div class="endpoint-card bg-surface-container-lowest p-space-md rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer group" onclick="loadSandboxRoute('GET', '/v1/farms/{id}/advisory', 'advisory')">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-primary/10 text-primary">GET</span>
+<span class="font-mono font-bold text-on-surface text-body-md group-hover:text-primary transition-colors">/v1/farms/{id}/advisory</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-2 py-0.5 rounded bg-surface-container font-label-caps text-label-caps text-on-surface-variant">LLM Inference</span>
+<span class="material-symbols-outlined text-outline text-[18px] group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+</div>
+</div>
+<div class="mt-space-xs flex items-center justify-between">
+<p class="font-body-sm text-body-sm text-on-surface-variant">Composite risk matrix, agronomy safety caveats, and multilingual voice synthesis text.</p>
+<span class="font-mono font-label-caps text-label-caps text-outline">~120ms</span>
+</div>
+</div>
+<!-- Route 6: Plot Image Pathology -->
+<div class="endpoint-card bg-surface-container-lowest p-space-md rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer group" onclick="loadSandboxRoute('POST', '/v1/plots/{id}/images', 'images')">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-secondary-container/20 text-secondary-container">POST</span>
+<span class="font-mono font-bold text-on-surface text-body-md group-hover:text-primary transition-colors">/v1/plots/{id}/images</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-2 py-0.5 rounded bg-error-container/30 text-on-error-container font-label-caps text-label-caps">Multipart Cloud Pathology</span>
+<span class="material-symbols-outlined text-outline text-[18px] group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+</div>
+</div>
+<div class="mt-space-xs flex items-center justify-between">
+<p class="font-body-sm text-body-sm text-on-surface-variant">Mobile canopy photo scan ingested -&gt; blended with weather model for spore dispersal.</p>
+<span class="font-mono font-label-caps text-label-caps text-outline">~240ms</span>
+</div>
+</div>
+<!-- Route 7: What-If Simulation (Highlighted Active) -->
+<div class="endpoint-card bg-surface-container-lowest p-space-md rounded-xl shadow-md transition-all cursor-pointer ring-2 ring-primary" onclick="loadSandboxRoute('POST', '/v1/farms/3/whatif', 'whatif')">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-secondary-container text-on-secondary-container">POST</span>
+<span class="font-mono font-bold text-primary text-body-md">/v1/farms/{id}/whatif</span>
+<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-on-primary">LOADED</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-2 py-0.5 rounded bg-surface-container font-label-caps text-label-caps text-on-surface-variant font-mono">Microclimate Sim</span>
+<span class="material-symbols-outlined text-primary text-[18px]">check_circle</span>
+</div>
+</div>
+<div class="mt-space-xs flex items-center justify-between">
+<p class="font-body-sm text-body-sm text-on-surface">Compute yield risk delta based on simulated irrigation, thermal shifts, and rainfall anomalies.</p>
+<span class="font-mono font-label-caps text-label-caps text-primary font-bold">~85ms</span>
+</div>
+</div>
+<!-- Route 8: Triage Queue -->
+<div class="endpoint-card bg-surface-container-lowest p-space-md rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer group" onclick="loadSandboxRoute('GET', '/v1/plots/{id}/triage', 'triage')">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-primary/10 text-primary">GET</span>
+<span class="font-mono font-bold text-on-surface text-body-md group-hover:text-primary transition-colors">/v1/plots/{id}/triage</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-2 py-0.5 rounded bg-error-container/40 text-on-error-container font-label-caps text-label-caps">&lt;70% Confidence Flags</span>
+<span class="material-symbols-outlined text-outline text-[18px] group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+</div>
+</div>
+<div class="mt-space-xs flex items-center justify-between">
+<p class="font-body-sm text-body-sm text-on-surface-variant">Officer human-in-the-loop review pool for ambiguous fungal vs nutritional necrosis scans.</p>
+<span class="font-mono font-label-caps text-label-caps text-outline">~29ms</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Col: Live Interactive Payload Sandbox (5 Cols) -->
+<div class="xl:col-span-5 flex flex-col gap-space-md">
+<div class="ceramic-card p-space-lg flex flex-col"><div class="flex items-center justify-between pb-space-sm mb-space-sm border-b border-outline-variant/20"><div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#f87171] shadow-sm inline-block"></span><span class="w-3 h-3 rounded-full bg-[#fbbf24] shadow-sm inline-block"></span><span class="w-3 h-3 rounded-full bg-[#34d399] shadow-sm inline-block"></span><span class="text-[11px] font-mono font-bold uppercase tracking-wider text-outline ml-2">Kernel Inspector</span></div><div class="flex items-center gap-2.5"><span class="font-mono text-[11px] px-2.5 py-0.5 rounded-full clay-btn-mint font-bold">200 OK</span><button class="px-4 py-1.5 rounded-full clay-btn-mint font-label-md text-label-md font-bold flex items-center gap-1.5 transition-all" id="send-request-btn" onclick="executeMockRequest()"><span class="material-symbols-outlined text-[16px]">play_arrow</span>Run Query</button></div></div><div class="ceramic-card-inset p-space-sm rounded-2xl mb-space-md font-mono text-[13px] flex items-center justify-between gap-space-sm"><div class="flex items-center gap-2.5 overflow-hidden truncate"><span class="px-2.5 py-0.5 rounded-full font-bold text-[11px] bg-secondary-container text-on-secondary-container uppercase tracking-wider" id="sandbox-badge">POST</span><span class="text-on-surface font-semibold truncate tracking-tight" id="sandbox-url">/v1/farms/3/whatif</span></div><span class="material-symbols-outlined text-outline text-[18px]">lock</span></div><div class="mb-space-md"><div class="flex items-center justify-between mb-1"><span class="text-[11px] font-mono font-semibold uppercase tracking-wider text-outline">Request Headers</span><span class="text-[11px] font-mono text-outline">HTTP/2 Header Frame</span></div><div class="ceramic-card-inset p-space-xs px-space-sm rounded-xl font-mono text-[11px] text-on-surface-variant flex items-center justify-between"><span class="truncate">Authorization: Bearer eyJhbGciOi...</span><span class="text-primary font-bold ml-2 shrink-0">Valid [Exp: 4h]</span></div></div><div class="flex flex-col gap-space-md"><div><div class="flex items-center justify-between mb-1.5"><span class="text-[11px] font-mono font-semibold text-on-surface uppercase tracking-wider">JSON Request Payload</span><span class="text-[11px] font-mono text-outline">application/json</span></div><pre class="w-full bg-[#1e293b] text-inverse-on-surface p-space-md rounded-2xl font-mono text-[12px] leading-relaxed overflow-x-auto shadow-inner border border-slate-700/50" id="request-payload" style="font-family: 'JetBrains Mono', monospace;"><code>{
+  <span class="text-primary-fixed-dim">"rainfall_delta_mm"</span>: <span class="text-secondary-fixed">25.0</span>,
+  <span class="text-primary-fixed-dim">"temp_shift_celsius"</span>: <span class="text-secondary-fixed">3.5</span>,
+  <span class="text-primary-fixed-dim">"soil_moisture_target_pct"</span>: <span class="text-secondary-fixed">42</span>,
+  <span class="text-primary-fixed-dim">"horizon_days"</span>: <span class="text-secondary-fixed">7</span>,
+  <span class="text-primary-fixed-dim">"crop_growth_stage"</span>: <span class="text-tertiary-fixed-dim">"Heading/Flowering"</span>
+}</code></pre></div><div><div class="flex items-center justify-between mb-1.5"><span class="text-[11px] font-mono font-semibold text-on-surface uppercase tracking-wider">Live Response Inspector</span><div class="flex items-center gap-2.5"><span class="font-mono text-[11px] font-bold text-primary" id="response-time">82ms</span><span class="text-[11px] text-outline font-mono">2.1 KB</span></div></div><pre class="w-full ceramic-card-inset text-on-surface p-space-md rounded-2xl font-mono text-[12px] leading-relaxed overflow-x-auto border border-white/60" id="response-payload" style="font-family: 'JetBrains Mono', monospace;"><code>{
+  <span class="text-primary font-semibold">"status"</span>: <span class="text-tertiary">"computed"</span>,
+  <span class="text-primary font-semibold">"farm_id"</span>: <span class="text-secondary-container font-semibold">3</span>,
+  <span class="text-primary font-semibold">"projected_risk_score"</span>: <span class="text-secondary font-bold">25</span>,
+  <span class="text-primary font-semibold">"baseline_risk_score"</span>: <span class="text-on-surface-variant">48</span>,
+  <span class="text-primary font-semibold">"yield_delta_pct"</span>: <span class="text-primary font-bold">+6.4</span>,
+  <span class="text-primary font-semibold">"evapotranspiration_loss_mm"</span>: <span class="text-on-surface-variant">18.2</span>,
+  <span class="text-primary font-semibold">"recommended_action"</span>: <span class="text-primary">"Skip planned irrigation - root reserve sufficient"</span>,
+  <span class="text-primary font-semibold">"confidence_interval"</span>: <span class="text-on-surface-variant">0.942</span>
+}</code></pre></div></div><div class="mt-space-md ceramic-card-inset p-space-md rounded-2xl"><div class="flex items-center justify-between mb-1.5"><span class="text-[11px] font-mono font-semibold text-on-surface uppercase tracking-wider">Executed PostGIS Query</span><span class="text-[10px] font-mono font-bold text-primary uppercase px-2 py-0.5 rounded-full bg-white shadow-xs">geoalchemy2 engine</span></div><code class="font-mono text-[11px] text-on-surface-variant break-all leading-relaxed block" style="font-family: 'JetBrains Mono', monospace;">SELECT p.id, ST_AsGeoJSON(p.polygon_geom) as geojson, ST_Area(p.polygon_geom::geography)/10000 as hectares FROM cadastral_plots p WHERE p.farm_id = 3 AND ST_Intersects(p.polygon_geom, ST_MakeEnvelope(76.90, 29.60, 77.10, 29.80, 4326));</code></div></div>
+</div>
+</div>
+<!-- Section 3: Architecture & Frontend Stack Specification Cards -->
+<div class="mb-space-lg">
+<div class="flex flex-col mb-space-md">
+<span class="font-label-caps text-label-caps text-primary uppercase tracking-wider">Engineering Topology Spec</span>
+<h2 class="font-headline-md text-headline-md text-on-surface">Client Ecosystem &amp; Real-Time Ingest Pipeline</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-lg">
+<!-- Card 1: Farmer Mobile Stack -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+<div class="absolute top-0 left-0 right-0 h-1 bg-primary"></div>
+<div>
+<div class="flex items-center justify-between mb-space-sm">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[24px]">smartphone</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container text-outline font-mono text-label-caps font-bold">Client Tier A</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-1">Farmer Mobile App</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-space-md">Low-connectivity native deployment optimized for direct sunlight legibility and vernacular speech advisory playback.</p>
+<div class="space-y-space-xs font-mono text-[12px]">
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Framework</span>
+<span class="text-primary font-bold">React Native + Expo (TS)</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Design Tokens</span>
+<span class="text-on-surface font-semibold">NativeWind v4 (Tailwind)</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Audio Engine</span>
+<span class="text-secondary font-bold">expo-av TTS Synthesizer</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Offline Cache</span>
+<span class="text-on-surface">@tanstack/react-query</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Local SQLite</span>
+<span class="text-tertiary font-bold">WatermelonDB (Sync v2)</span>
+</div>
+</div>
+</div>
+<div class="mt-space-md pt-space-sm flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-outline uppercase">Field Tested</span>
+<span class="font-label-md text-label-md text-primary font-bold">Offline-first (14d Store)</span>
+</div>
+</div>
+<!-- Card 2: Extension Officer Web Stack -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+<div class="absolute top-0 left-0 right-0 h-1 bg-tertiary"></div>
+<div>
+<div class="flex items-center justify-between mb-space-sm">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[24px]">desktop_mac</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container text-outline font-mono text-label-caps font-bold">Client Tier B</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-1">Extension Officer Web</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-space-md">High-density diagnostic console for regional agronomists conducting mass triage and cluster intervention planning.</p>
+<div class="space-y-space-xs font-mono text-[12px]">
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Core Engine</span>
+<span class="text-tertiary font-bold">React 18 + Vite (TypeScript)</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Spatial Vector</span>
+<span class="text-primary font-bold">Leaflet &amp; mapbox-gl</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Direct Ingest</span>
+<span class="text-on-surface">GeoJSON (PostGIS geoalchemy2)</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Telemetry Charts</span>
+<span class="text-secondary font-bold">Recharts ResponsiveSVG</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Symbol Set</span>
+<span class="text-on-surface">Lucide React &amp; Symbols</span>
+</div>
+</div>
+</div>
+<div class="mt-space-md pt-space-sm flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-outline uppercase">Spatial Rendering</span>
+<span class="font-label-md text-label-md text-tertiary font-bold">Web Workers &amp; VectorTiles</span>
+</div>
+</div>
+<!-- Card 3: Real-Time Pipeline & Pathology Blend -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+<div class="absolute top-0 left-0 right-0 h-1 bg-secondary-container"></div>
+<div>
+<div class="flex items-center justify-between mb-space-sm">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[24px]">cloud_sync</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container text-outline font-mono text-label-caps font-bold">Backend Kernel</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-1">Compute &amp; Model Pipeline</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-space-md">Spatial join engine fusing low-latency edge edge-inference diagnostics with orbital Copernicus satellite bands.</p>
+<div class="space-y-space-xs font-mono text-[12px]">
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Database Engine</span>
+<span class="text-primary font-bold">PostgreSQL 16 + PostGIS 3.4</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Satellite Feed</span>
+<span class="text-tertiary font-bold">Sentinel-2 Copernicus API</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Edge ML Vision</span>
+<span class="text-on-surface">TFLite On-Device (Mobile)</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Cloud Ensemble</span>
+<span class="text-secondary font-bold">Blend Engine (Pathology + Microclimate)</span>
+</div>
+<div class="p-space-xs bg-surface-container-low rounded flex items-center justify-between">
+<span class="text-on-surface-variant">Cache Broker</span>
+<span class="text-on-surface">Redis GeoSpatial Stream</span>
+</div>
+</div>
+</div>
+<div class="mt-space-md pt-space-sm flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-outline uppercase">Processing Pipeline</span>
+<span class="font-label-md text-label-md text-secondary font-bold">Async Celery Workers</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Architecture Flow SVG Diagram -->
+<div class="ceramic-card p-space-lg mb-space-lg"><div class="flex items-center justify-between mb-space-md"><div><span class="font-label-caps text-label-caps text-primary uppercase tracking-wider font-semibold">Topology Map</span><h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">End-to-End Ingestion &amp; Query Execution Loop</h3></div><div class="flex items-center gap-space-sm"><span class="flex items-center gap-1.5 font-label-caps text-label-caps text-outline px-3 py-1 rounded-full clay-pill-neutral"><span class="w-2.5 h-2.5 rounded-full bg-primary inline-block"></span> Spatial GeoJSON</span><span class="flex items-center gap-1.5 font-label-caps text-label-caps text-outline px-3 py-1 rounded-full clay-pill-neutral"><span class="w-2.5 h-2.5 rounded-full bg-tertiary inline-block"></span> Multispectral Raster</span><span class="flex items-center gap-1.5 font-label-caps text-label-caps text-outline px-3 py-1 rounded-full clay-pill-neutral"><span class="w-2.5 h-2.5 rounded-full bg-secondary-container inline-block"></span> Model Blend</span></div></div><div class="w-full overflow-x-auto py-2 ceramic-card-inset p-3 rounded-2xl"><svg class="w-full min-w-[760px] h-36" fill="none" viewBox="0 0 960 140" xmlns="http://www.w3.org/2000/svg"><path d="M 160 70 L 260 70" stroke="#bccac0" stroke-dasharray="4 4" stroke-width="2"></path><path d="M 400 70 L 500 70" stroke="#006948" stroke-width="2"></path><path d="M 640 70 L 740 70" stroke="#006948" stroke-width="2"></path><path d="M 880 70 L 930 70" stroke="#007bb9" stroke-dasharray="4 4" stroke-width="2"></path><rect fill="#ffffff" filter="drop-shadow(2px 2px 6px rgba(0,0,0,0.06))" height="90" rx="14" width="140" x="20" y="25"></rect><text fill="#131b2e" font-family="Plus Jakarta Sans" font-size="12" font-weight="700" x="32" y="52">Edge Farmer Device</text><text fill="#3d4a42" font-family="Inter" font-size="10" x="32" y="72">TFLite 4-Class Inference</text><text fill="#006948" font-family="Inter" font-size="10" font-weight="600" x="32" y="90">WatermelonDB Cache</text><rect fill="#ffffff" filter="drop-shadow(2px 2px 6px rgba(0,0,0,0.06))" height="90" rx="14" width="140" x="260" y="25"></rect><text fill="#131b2e" font-family="Plus Jakarta Sans" font-size="12" font-weight="700" x="272" y="52">FastAPI Gateway</text><text fill="#3d4a42" font-family="Inter" font-size="10" x="272" y="72">JWT Token Decryption</text><text fill="#006948" font-family="Inter" font-size="10" font-weight="600" x="272" y="90">Rate-limit (2000 RPS)</text><rect fill="#a6e3cb" filter="drop-shadow(2px 3px 8px rgba(0,105,72,0.18))" height="90" rx="14" width="140" x="500" y="25"></rect><text fill="#064e3b" font-family="Plus Jakarta Sans" font-size="12" font-weight="700" x="512" y="52">PostGIS Spatial Core</text><text fill="#065f46" font-family="Inter" font-size="10" x="512" y="72">ST_Intersects Cadastral</text><text fill="#064e3b" font-family="Inter" font-size="10" font-weight="700" x="512" y="90">EPSG:4326 GeoJSON</text><rect fill="#ffffff" filter="drop-shadow(2px 2px 6px rgba(0,0,0,0.06))" height="90" rx="14" width="140" x="740" y="25"></rect><text fill="#131b2e" font-family="Plus Jakarta Sans" font-size="12" font-weight="700" x="752" y="52">Cloud Blend Engine</text><text fill="#904d00" font-family="Inter" font-size="10" x="752" y="72">Sentinel-2 Multispectral</text><text fill="#ba1a1a" font-family="Inter" font-size="10" font-weight="600" x="752" y="90">&lt;70% Flags -&gt; Triage Queue</text></svg></div></div>
+</div>
+<script>
+  // Dynamic Route Switching for Interactive Sandbox
+  const routeStore = {
+    'auth': {
+      method: 'POST',
+      url: '/v1/auth/login',
+      badgeClass: 'bg-secondary-container text-on-secondary-container',
+      req: {
+        "mobile_msisdn": "+919812048891",
+        "pin_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "device_uuid": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      },
+      res: {
+        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.agrN_prod_karnal...",
+        "token_type": "bearer",
+        "expires_in_secs": 14400,
+        "roles": ["FIELD_OFFICER", "GEO_ANALYST"],
+        "assigned_cluster": "Karnal_West_District_04"
+      },
+      latency: '18ms'
+    },
+    'farms': {
+      method: 'GET',
+      url: '/v1/farms?district=Karnal&active_only=true',
+      badgeClass: 'bg-primary text-on-primary',
+      req: {},
+      res: {
+        "total_farms": 142,
+        "farms": [
+          { "id": 1, "owner": "Rajesh Kumar", "plots_count": 4, "total_hectares": 12.8, "risk_tier": "NORMAL" },
+          { "id": 2, "owner": "Sukhvinder Singh", "plots_count": 2, "total_hectares": 6.1, "risk_tier": "ELEVATED" },
+          { "id": 3, "owner": "Harpreet Dhillon", "plots_count": 6, "total_hectares": 18.4, "risk_tier": "CRITICAL" }
+        ]
+      },
+      latency: '34ms'
+    },
+    'plots': {
+      method: 'GET',
+      url: '/v1/farms/3/plots',
+      badgeClass: 'bg-primary text-on-primary',
+      req: {},
+      res: {
+        "type": "FeatureCollection",
+        "farm_id": 3,
+        "features": [
+          {
+            "type": "Feature",
+            "properties": { "cadastral_id": "KRN-8821-A", "crop": "Basmati PB-1121", "phenology_stage": "Heading", "ndvi_mean": 0.74 },
+            "geometry": { "type": "Polygon", "coordinates": [[[76.982, 29.681], [76.985, 29.681], [76.985, 29.685], [76.982, 29.685], [76.982, 29.681]]] }
+          }
+        ]
+      },
+      latency: '45ms'
+    },
+    'state': {
+      method: 'GET',
+      url: '/v1/farms/3/state',
+      badgeClass: 'bg-primary text-on-primary',
+      req: {},
+      res: {
+        "telemetry_timestamp": "2025-05-18T09:42:00Z",
+        "soil_moisture_surface_pct": 38.4,
+        "soil_moisture_root_pct": 41.2,
+        "ambient_temp_c": 31.8,
+        "rh_pct": 68.2,
+        "sentinel_l2a": { "granule_id": "S2B_MSIL2A_20250517T054649", "ndvi_avg": 0.72, "ndwi_avg": 0.18, "cloud_cover_pct": 2.1 }
+      },
+      latency: '68ms'
+    },
+    'advisory': {
+      method: 'GET',
+      url: '/v1/farms/3/advisory',
+      badgeClass: 'bg-primary text-on-primary',
+      req: {},
+      res: {
+        "composite_risk_score": 58,
+        "critical_alert": "High humidity & leaf wetness indicates blast vulnerability",
+        "llm_advisory_en": "Delay nitrogen top-dressing. High nocturnal relative humidity favors Pyricularia oryzae incubation.",
+        "llm_advisory_hi": "यूरिया का छिड़काव रोकें। रात में अधिक नमी के कारण झुलसा रोग फैलने की संभावना है।",
+        "audio_tts_resource_url": "https://cdn.agrin.in/voice/syn_adv_3_hi.mp3"
+      },
+      latency: '124ms'
+    },
+    'images': {
+      method: 'POST',
+      url: '/v1/plots/8821/images',
+      badgeClass: 'bg-secondary-container text-on-secondary-container',
+      req: {
+        "file_name": "canopy_scan_8821_cam2.jpg",
+        "content_type": "image/jpeg",
+        "gps_fix": { "lat": 29.6834, "lon": 76.9831, "accuracy_m": 1.2 },
+        "on_device_tflite_pred": { "label": "Yellow_Rust", "confidence": 0.64 }
+      },
+      res: {
+        "cloud_blend_status": "FLAGGED_FOR_HUMAN_TRIAGE",
+        "confidence_score": 0.642,
+        "triage_queue_id": 9042,
+        "action_required": "Extension Officer confirmation dispatched"
+      },
+      latency: '245ms'
+    },
+    'whatif': {
+      method: 'POST',
+      url: '/v1/farms/3/whatif',
+      badgeClass: 'bg-secondary-container text-on-secondary-container',
+      req: {
+        "rainfall_delta_mm": 25.0,
+        "temp_shift_celsius": 3.5,
+        "soil_moisture_target_pct": 42,
+        "horizon_days": 7,
+        "crop_growth_stage": "Heading/Flowering"
+      },
+      res: {
+        "status": "computed",
+        "farm_id": 3,
+        "projected_risk_score": 25,
+        "baseline_risk_score": 48,
+        "yield_delta_pct": 6.4,
+        "evapotranspiration_loss_mm": 18.2,
+        "recommended_action": "Skip planned irrigation - root reserve sufficient",
+        "confidence_interval": 0.942
+      },
+      latency: '82ms'
+    },
+    'triage': {
+      method: 'GET',
+      url: '/v1/plots/8821/triage',
+      badgeClass: 'bg-primary text-on-primary',
+      req: {},
+      res: {
+        "triage_id": 9042,
+        "officer_assigned": "Dr. Ananya Sharma",
+        "image_url": "https://storage.agrin.in/scans/2025/05/8821_canopy.webp",
+        "model_discrepancy": { "on_device": "Yellow_Rust (64%)", "cloud_ensemble": "Bacterial_Leaf_Blight (62%)" },
+        "status": "AWAITING_REVIEW"
+      },
+      latency: '29ms'
+    }
+  };
+
+  function loadSandboxRoute(method, path, key) {
+    const data = routeStore[key];
+    if (!data) return;
+
+    // Update Sandbox UI Badges & URL
+    const badge = document.getElementById('sandbox-badge');
+    const urlSpan = document.getElementById('sandbox-url');
+    const reqPre = document.getElementById('request-payload');
+    const resPre = document.getElementById('response-payload');
+    const latencySpan = document.getElementById('response-time');
+
+    badge.textContent = data.method;
+    badge.className = `px-2 py-0.5 rounded font-bold text-xs ${data.badgeClass}`;
+    urlSpan.textContent = data.url;
+    latencySpan.textContent = data.latency;
+
+    // Render Clean JSON
+    reqPre.innerHTML = `<code>${JSON.stringify(data.req, null, 2)}</code>`;
+    resPre.innerHTML = `<code>${JSON.stringify(data.res, null, 2)}</code>`;
+  }
+
+  function executeMockRequest() {
+    const btn = document.getElementById('send-request-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<span class="material-symbols-outlined text-[16px] animate-spin">refresh</span> Ingesting...`;
+    btn.disabled = true;
+
+    setTimeout(() => {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+      const resPre = document.getElementById('response-payload');
+      resPre.classList.add('bg-primary/10');
+      setTimeout(() => resPre.classList.remove('bg-primary/10'), 300);
+    }, 450);
+  }
+</script></main></div>
+
+
+<!-- AgriN Universal Interactive Runtime Layer -->
+<div id="agrin-toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 999999; display: flex; flex-direction: column; gap: 8px; pointer-events: none;"></div>
+
+<script>
+(function() {
+  console.log('[AgriN] Interactive runtime active.');
+
+  // Toast System
+  window.showAgriToast = function(message, type = 'success') {
+    const container = document.getElementById('agrin-toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.style.cssText = 'pointer-events: auto; padding: 12px 18px; border-radius: 12px; font-family: Inter, sans-serif; font-size: 13px; font-weight: 600; color: #fff; display: flex; items-center; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); transition: all 0.3s ease; transform: translateY(-10px); opacity: 0;';
+    
+    if (type === 'success') {
+      toast.style.backgroundColor = '#006948';
+      toast.style.border = '1px solid #68dba9';
+      toast.innerHTML = '<span>✅ ' + message + '</span>';
+    } else if (type === 'warn') {
+      toast.style.backgroundColor = '#904d00';
+      toast.style.border = '1px solid #fe932c';
+      toast.innerHTML = '<span>⚠️ ' + message + '</span>';
+    } else {
+      toast.style.backgroundColor = '#131b2e';
+      toast.style.border = '1px solid #3d4a42';
+      toast.innerHTML = '<span>ℹ️ ' + message + '</span>';
+    }
+
+    container.appendChild(toast);
+    requestAnimationFrame(() => {
+      toast.style.transform = 'translateY(0)';
+      toast.style.opacity = '1';
+    });
+
+    setTimeout(() => {
+      toast.style.transform = 'translateY(-10px)';
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    }, 3800);
+  };
+
+  // Web Speech API Voice Synthesis
+  window.speakAgriVoice = function(text) {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+      showAgriToast('Playing voice advisory via Web Speech audio...', 'info');
+    } else {
+      showAgriToast('Audio synthesized: ' + text.slice(0, 50) + '...', 'info');
+    }
+  };
+
+  // Wire up all navigation links
+  document.addEventListener('DOMContentLoaded', function() {
+    const routeMap = {'plots': '/stitch/home_farm_digital_twin/code.html', 'health': '/stitch/home_farm_digital_twin/code.html', 'advisories': '/stitch/home_farm_digital_twin/code.html', 'scan-ai': '/stitch/crop_disease_doctor/code.html', 'scan': '/stitch/crop_disease_doctor/code.html', 'what-if': '/stitch/what_if_simulator/code.html', 'whatif': '/stitch/what_if_simulator/code.html', 'sync': '/stitch/offline_mode_data_sync/code.html', 'offline': '/stitch/offline_mode_data_sync/code.html', 'geospatial-command': '/stitch/geospatial_command_triage_drawer/code.html', 'geospatial': '/stitch/geospatial_command_triage_drawer/code.html', 'disease-triage-queue': '/stitch/disease_triage_queue/code.html', 'triage': '/stitch/disease_triage_queue/code.html', 'farmer-plot-registry': '/stitch/farmer_plot_management_directory/code.html', 'registry': '/stitch/farmer_plot_management_directory/code.html', 'telemetry-weather-stations': '/stitch/telemetry_weather_stations/code.html', 'weather': '/stitch/telemetry_weather_stations/code.html', 'api-integration-architecture': '/stitch/backend_api_integration_architecture/code.html', 'api': '/stitch/backend_api_integration_architecture/code.html'};
+
+    document.querySelectorAll('a, button').forEach(el => {
+      const path = el.getAttribute('data-path');
+      const href = el.getAttribute('href');
+      const text = el.innerText ? el.innerText.trim().toLowerCase() : '';
+
+      // Fix navigation paths
+      if (path && routeMap[path]) {
+        el.setAttribute('href', routeMap[path]);
+        el.addEventListener('click', function(e) {
+          e.preventDefault();
+          window.location.href = routeMap[path];
+        });
+      } else if (href === '#' || !href) {
+        if (text.includes('disease triage') || text.includes('triage queue')) {
+          el.onclick = () => window.location.href = routeMap['disease-triage-queue'];
+        } else if (text.includes('farmer') && text.includes('plot')) {
+          el.onclick = () => window.location.href = routeMap['farmer-plot-registry'];
+        } else if (text.includes('geospatial') || text.includes('command')) {
+          el.onclick = () => window.location.href = routeMap['geospatial-command'];
+        } else if (text.includes('weather') || text.includes('telemetry')) {
+          el.onclick = () => window.location.href = routeMap['telemetry-weather-stations'];
+        } else if (text.includes('api') || text.includes('architecture')) {
+          el.onclick = () => window.location.href = routeMap['api-integration-architecture'];
+        } else if (text.includes('scan')) {
+          el.onclick = () => window.location.href = routeMap['scan-ai'];
+        } else if (text.includes('what-if') || text.includes('what if')) {
+          el.onclick = () => window.location.href = routeMap['what-if'];
+        } else if (text.includes('sync') || text.includes('offline')) {
+          el.onclick = () => window.location.href = routeMap['sync'];
+        }
+      }
+
+      // Action button listeners
+      if (text.includes('broadcast push') || text.includes('broadcast advisory')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          showAgriToast('Advisory broadcasted to Ramesh Patel via WhatsApp & SMS (Twilio gateway)!', 'success');
+        };
+      } else if (text.includes('trigger drone scan')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          showAgriToast('Multispectral drone flight dispatched to Sector 4B (Altitude: 45m).', 'info');
+        };
+      } else if (text.includes('confirm diagnosis') || text.includes('approve prescription')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          el.innerText = '✅ Confirmed by Officer';
+          el.style.backgroundColor = '#006948';
+          el.style.color = '#fff';
+          showAgriToast('Diagnosis confirmed! Prescription locked and synced to farmer digital twin.', 'success');
+        };
+      } else if (text.includes('override') || text.includes('reclassify')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          el.innerText = '⚠️ Overridden';
+          el.style.backgroundColor = '#904d00';
+          el.style.color = '#fff';
+          showAgriToast('Disease classification overridden by Extension Officer.', 'warn');
+        };
+      } else if (text.includes('listen audio') || text.includes('voice memo') || el.title?.includes('Voice')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          speakAgriVoice("Namaste Ramesh Patel. Crop health NDVI is zero point seven four. Reduce midday furrow evaporation. Apply preventive copper fungicide spray on Sector C due to high canopy humidity.");
+        };
+      } else if (text.includes('sync') && (text.includes('force') || text.includes('now') || text.includes('telemetry'))) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          showAgriToast('Syncing with AgriN Cloud & Sentinel-2 multispectral pipeline...', 'info');
+          setTimeout(() => {
+            showAgriToast('Sync Complete! 7,841 plots and 3 offline submissions updated.', 'success');
+          }, 1200);
+        };
+      }
+    });
+
+    // Make map SVG / polygon elements clickable
+    document.querySelectorAll('polygon, path').forEach(poly => {
+      poly.style.cursor = 'pointer';
+      poly.addEventListener('click', function() {
+        showAgriToast('Plot Selected: Cadastral Sector 4B (Sonalika Wheat PBW-502). NDVI: 0.74, Moisture: 24.8%.', 'info');
+      });
+    });
+  });
+})();
+</script>
+
+<script src="/stitch/agrin-nav.js"></script></body></html>

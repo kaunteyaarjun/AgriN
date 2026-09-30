@@ -1,0 +1,349 @@
+/**
+ * AgriN Neumorphism (Soft UI) Design System
+ * Based on Product UI Styleguide specifications:
+ * - Color Tokens: Primary (#98DECB / #85F8C4), Surface (#E8ECEF / #EEF2F6), Focus Ring (#00CFCC)
+ * - Elevation Levels 1-5 with dual soft directional light/dark shadows
+ * - Pill buttons, Inset search inputs, Convex chips, Recessed tabs, Pill alerts
+ * - Neumorphic 3D embossed and extruded icon containers
+ */
+
+:root {
+  --neo-bg: #E8ECEF;
+  --neo-surface: #EEF2F6;
+  --neo-surface-card: #E8ECEF;
+  --neo-surface-subtle: #E2E8F0;
+  
+  /* Primary mint pastel tokens */
+  --neo-primary: #98DECB;
+  --neo-primary-hover: #85E8C4;
+  --neo-primary-dark: #006948;
+  --neo-primary-text: #064E3B;
+  --neo-primary-gradient: linear-gradient(135deg, #a8eed9 0%, #82deb0 100%);
+  
+  /* Border & Focus ring */
+  --neo-border: #D5DDE6;
+  --neo-border-subtle: rgba(255, 255, 255, 0.6);
+  --neo-focus-ring: #00CFCC;
+  --neo-focus-glow: 0 0 0 3px rgba(0, 207, 204, 0.45);
+  
+  /* Text colors */
+  --neo-text-main: #1E293B;
+  --neo-text-muted: #64748B;
+  --neo-text-subtle: #94A3B8;
+  
+  /* Status alert colors */
+  --neo-success-bg: #D4F4E4;
+  --neo-success-border: #85F8C4;
+  --neo-success-text: #065F46;
+  
+  --neo-warning-bg: #FEF3C7;
+  --neo-warning-border: #FCD34D;
+  --neo-warning-text: #92400E;
+  
+  --neo-error-bg: #FEE2E2;
+  --neo-error-border: #FCA5A5;
+  --neo-error-text: #991B1B;
+  
+  /* Neumorphic Dual Shadows (Light from Top-Left, Dark at Bottom-Right) */
+  --neo-shadow-light: -6px -6px 14px rgba(255, 255, 255, 0.95);
+  --neo-shadow-dark: 6px 6px 14px rgba(166, 180, 200, 0.4);
+  
+  /* Elevation Levels 1 to 5 from Styleguide */
+  --neo-elev-1: 3px 3px 6px rgba(166, 180, 200, 0.3), -3px -3px 6px rgba(255, 255, 255, 0.9);
+  --neo-elev-2: 6px 6px 12px rgba(166, 180, 200, 0.38), -6px -6px 12px rgba(255, 255, 255, 0.95);
+  --neo-elev-3: 9px 9px 18px rgba(166, 180, 200, 0.42), -9px -9px 18px rgba(255, 255, 255, 0.95);
+  --neo-elev-4: 12px 12px 24px rgba(166, 180, 200, 0.48), -12px -12px 24px rgba(255, 255, 255, 0.95);
+  --neo-elev-5: 16px 16px 32px rgba(166, 180, 200, 0.55), -16px -16px 32px rgba(255, 255, 255, 0.95);
+  
+  /* Inset / Pressed Sunken Shadows */
+  --neo-inset-sm: inset 2px 2px 5px rgba(166, 180, 200, 0.4), inset -2px -2px 5px rgba(255, 255, 255, 0.9);
+  --neo-inset-md: inset 4px 4px 8px rgba(166, 180, 200, 0.45), inset -4px -4px 8px rgba(255, 255, 255, 0.95);
+  --neo-inset-lg: inset 6px 6px 12px rgba(166, 180, 200, 0.5), inset -6px -6px 12px rgba(255, 255, 255, 0.95);
+}
+
+/* Base Neumorphic Card */
+.neo-card {
+  background: var(--neo-surface-card);
+  border-radius: 20px;
+  box-shadow: var(--neo-elev-2);
+  border: 1px solid var(--neo-border-subtle);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.neo-card:hover, .neo-card-hover:hover {
+  box-shadow: var(--neo-elev-3);
+  transform: translateY(-2px);
+}
+
+.neo-card-level-1 { box-shadow: var(--neo-elev-1); }
+.neo-card-level-2 { box-shadow: var(--neo-elev-2); }
+.neo-card-level-3 { box-shadow: var(--neo-elev-3); }
+.neo-card-level-4 { box-shadow: var(--neo-elev-4); }
+.neo-card-level-5 { box-shadow: var(--neo-elev-5); }
+
+/* Sunken / Inset surface */
+.neo-inset {
+  background: var(--neo-bg);
+  box-shadow: var(--neo-inset-md);
+  border-radius: 16px;
+  border: 1px solid rgba(166, 180, 200, 0.2);
+}
+
+/* Neumorphic 3D Icons (Convex Squircle & Circle) */
+.neo-icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--neo-surface);
+  border-radius: 16px;
+  box-shadow: var(--neo-elev-2);
+  border: 1px solid var(--neo-border-subtle);
+  color: var(--neo-text-main);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.neo-icon-circle {
+  border-radius: 50%;
+}
+
+.neo-icon-box:hover {
+  box-shadow: var(--neo-elev-3);
+  transform: scale(1.04);
+}
+
+.neo-icon-box:active, .neo-icon-box.active {
+  box-shadow: var(--neo-inset-sm);
+  transform: scale(0.97);
+}
+
+.neo-icon-mint {
+  background: var(--neo-primary);
+  color: var(--neo-primary-text);
+  box-shadow: 4px 4px 10px rgba(152, 222, 203, 0.5), -4px -4px 10px rgba(255, 255, 255, 0.9);
+}
+
+/* Pill Buttons from Styleguide */
+.neo-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: var(--neo-surface);
+  color: var(--neo-text-main);
+  box-shadow: var(--neo-elev-2);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.neo-pill-btn:hover {
+  box-shadow: var(--neo-elev-3);
+  transform: translateY(-1px);
+}
+
+.neo-pill-btn:active {
+  box-shadow: var(--neo-inset-sm);
+  transform: translateY(1px);
+}
+
+.neo-pill-btn:focus-visible {
+  box-shadow: var(--neo-elev-2), var(--neo-focus-glow);
+}
+
+/* Primary Mint Action Button */
+.neo-pill-btn-primary {
+  background: var(--neo-primary-gradient);
+  color: var(--neo-primary-text);
+  box-shadow: 5px 5px 12px rgba(120, 195, 175, 0.45), -5px -5px 12px rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.neo-pill-btn-primary:hover {
+  background: linear-gradient(135deg, #b6f3e0 0%, #8ee4c7 100%);
+  box-shadow: 6px 6px 16px rgba(120, 195, 175, 0.55), -6px -6px 16px rgba(255, 255, 255, 0.95), var(--neo-focus-glow);
+  transform: translateY(-2px);
+}
+
+.neo-pill-btn-primary:active {
+  box-shadow: inset 3px 3px 6px rgba(100, 170, 150, 0.4), inset -3px -3px 6px rgba(255, 255, 255, 0.8);
+  transform: translateY(0);
+}
+
+/* Disabled Pill Button */
+.neo-pill-btn-disabled, .neo-pill-btn:disabled {
+  background: #D9DFE5;
+  color: #8C99A8;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Inset Pill Inputs (Search & Forms) */
+.neo-pill-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--neo-bg);
+  box-shadow: var(--neo-inset-md);
+  border-radius: 9999px;
+  padding: 8px 18px;
+  border: 1.5px solid rgba(166, 180, 200, 0.25);
+  transition: all 0.2s ease;
+}
+
+.neo-pill-input:focus-within {
+  border-color: var(--neo-focus-ring);
+  box-shadow: var(--neo-inset-md), var(--neo-focus-glow);
+}
+
+.neo-pill-input input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--neo-text-main);
+  width: 100%;
+}
+
+.neo-pill-input input::placeholder {
+  color: var(--neo-text-subtle);
+}
+
+/* Neumorphic Chips */
+.neo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--neo-surface);
+  color: var(--neo-text-main);
+  box-shadow: var(--neo-elev-1);
+  border: 1px solid var(--neo-border-subtle);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.neo-chip:hover {
+  box-shadow: var(--neo-elev-2);
+}
+
+.neo-chip.selected, .neo-chip-selected {
+  background: var(--neo-primary);
+  color: var(--neo-primary-text);
+  box-shadow: 3px 3px 8px rgba(140, 215, 195, 0.4), -3px -3px 8px rgba(255, 255, 255, 0.9);
+}
+
+.neo-chip.disabled, .neo-chip-disabled {
+  background: #D9DFE5;
+  color: #8C99A8;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Neumorphic Tabs Container */
+.neo-tabs-container {
+  display: inline-flex;
+  align-items: center;
+  background: var(--neo-bg);
+  box-shadow: var(--neo-inset-sm);
+  padding: 5px;
+  border-radius: 9999px;
+  gap: 4px;
+}
+
+.neo-tab-item {
+  padding: 7px 18px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--neo-text-muted);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.neo-tab-item:hover {
+  color: var(--neo-text-main);
+}
+
+.neo-tab-item.active {
+  background: var(--neo-primary);
+  color: var(--neo-primary-text);
+  box-shadow: var(--neo-elev-1);
+}
+
+/* Alerts from Styleguide */
+.neo-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-radius: 9999px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: var(--neo-elev-2);
+  transition: all 0.3s ease;
+}
+
+.neo-alert-success {
+  background: var(--neo-success-bg);
+  color: var(--neo-success-text);
+  border: 1px solid var(--neo-success-border);
+}
+
+.neo-alert-warning {
+  background: var(--neo-warning-bg);
+  color: var(--neo-warning-text);
+  border: 1px solid var(--neo-warning-border);
+}
+
+.neo-alert-error {
+  background: var(--neo-error-bg);
+  color: var(--neo-error-text);
+  border: 1px solid var(--neo-error-border);
+}
+
+/* Focus Ring */
+.neo-focus {
+  outline: 2px solid var(--neo-focus-ring);
+  outline-offset: 2px;
+  box-shadow: var(--neo-focus-glow);
+}
+
+/* Global Neumorphic page style override */
+body.neo-theme {
+  background-color: var(--neo-bg) !important;
+  color: var(--neo-text-main) !important;
+}
+
+body.neo-theme header {
+  background: rgba(232, 236, 239, 0.92) !important;
+  box-shadow: var(--neo-elev-1) !important;
+  border-bottom: 1px solid var(--neo-border-subtle) !important;
+}
+
+body.neo-theme aside {
+  background: rgba(232, 236, 239, 0.88) !important;
+  box-shadow: var(--neo-elev-2) !important;
+}
+
+body.neo-theme .bg-surface-container-lowest,
+body.neo-theme .bg-surface-container-low,
+body.neo-theme .bg-surface-container {
+  background-color: var(--neo-surface) !important;
+  box-shadow: var(--neo-elev-2) !important;
+  border-color: rgba(255, 255, 255, 0.7) !important;
+}

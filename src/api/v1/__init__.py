@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from src.api.v1.advisory import router as advisory_router
 from src.api.v1.auth import router as auth_router
+from src.api.v1.disease import router as disease_router
 from src.api.v1.farm_state import router as farm_state_router
 from src.api.v1.farmers import router as farmers_router
 from src.api.v1.farms import router as farms_router
@@ -19,6 +20,7 @@ from src.api.v1.whatif import router as whatif_router
 api_router = APIRouter(prefix="/api/v1")
 
 api_router.include_router(auth_router)
+api_router.include_router(disease_router)
 api_router.include_router(farmers_router)
 api_router.include_router(farms_router)
 api_router.include_router(plots_router)

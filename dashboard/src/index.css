@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'leaflet/dist/leaflet.css';
+@import '/stitch/neumorphism.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  color-scheme: light;
+  background-color: #E8ECEF;
+  color: #1E293B;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #E8ECEF;
+  color: #1E293B;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Neumorphic custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #E8ECEF;
+  box-shadow: inset 1px 1px 3px rgba(166, 180, 200, 0.4);
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+  box-shadow: 1px 1px 3px rgba(166, 180, 200, 0.5);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #98DECB;
+}

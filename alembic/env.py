@@ -92,10 +92,26 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_async_migrations() -> None:
     """Create an async engine and run migrations through a sync-bridged connection."""
     section = config.get_section(config.config_ini_section, {})
-    section["sqlalchemy.url"] = _database_url()
+    db_url = _database_url()
+    connect_args: dict[str, object] = {}
+    if "supabase.co" in db_url or "ssl=require" in db_url or "sslmode=require" in db_url:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        connect_args["ssl"] = ctx
+        db_url = (
+            db_url.replace("?ssl=require", "")
+            .replace("&ssl=require", "")
+            .replace("?sslmode=require", "")
+            .replace("&sslmode=require", "")
+        )
+
+    section["sqlalchemy.url"] = db_url
     connectable = async_engine_from_config(
         section,
         prefix="sqlalchemy.",
+        connect_args=connect_args,
         poolclass=pool.NullPool,
     )
 

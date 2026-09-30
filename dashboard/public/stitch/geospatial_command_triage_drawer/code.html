@@ -1,0 +1,672 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } ::-webkit-scrollbar { display: none; }</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "surface-bright": "#faf8ff", "secondary-fixed": "#ffdcc3", "primary-fixed": "#85f8c4", "surface-container-low": "#f2f3ff", "on-surface": "#131b2e", "surface-container-high": "#e2e7ff", "surface-container-highest": "#dae2fd", "on-primary-container": "#f5fff7", "surface": "#faf8ff", "tertiary-fixed": "#cce5ff", "error": "#ba1a1a", "tertiary-fixed-dim": "#93ccff", "inverse-on-surface": "#eef0ff", "on-secondary-fixed-variant": "#6e3900", "primary-fixed-dim": "#68dba9", "inverse-primary": "#68dba9", "secondary-fixed-dim": "#ffb77d", "surface-variant": "#dae2fd", "background": "#faf8ff", "secondary": "#904d00", "on-error-container": "#93000a", "on-primary-fixed-variant": "#005137", "on-secondary": "#ffffff", "outline-variant": "#bccac0", "tertiary": "#006194", "on-tertiary": "#ffffff", "surface-container": "#eaedff", "on-secondary-container": "#663500", "secondary-container": "#fe932c", "on-primary": "#ffffff", "primary-container": "#00855d", "surface-container-lowest": "#ffffff", "outline": "#6d7a72", "inverse-surface": "#283044", "on-error": "#ffffff", "on-tertiary-fixed-variant": "#004b73", "surface-dim": "#d2d9f4", "on-tertiary-container": "#fdfcff", "primary": "#006948", "tertiary-container": "#007bb9", "on-tertiary-fixed": "#001d31", "error-container": "#ffdad6", "on-primary-fixed": "#002114", "surface-tint": "#006c4a", "on-secondary-fixed": "#2f1500", "on-background": "#131b2e", "on-surface-variant": "#3d4a42" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "gutter-desktop": "2rem", "gutter": "1rem", "space-sm": "0.5rem", "margin": "1rem", "space-md": "1rem", "gutter-tablet": "1.5rem", "space-xs": "0.25rem", "margin-desktop": "3rem", "space-lg": "1.5rem", "space-xl": "2.5rem", "margin-tablet": "2rem" }, "fontFamily": { "headline-md": [ "Plus Jakarta Sans" ], "body-md": [ "Inter" ], "metric-unit": [ "Inter" ], "display-hero": [ "Plus Jakarta Sans" ], "label-md": [ "Inter" ], "headline-lg-mobile": [ "Plus Jakarta Sans" ], "label-caps": [ "Inter" ], "body-sm": [ "Inter" ], "headline-sm": [ "Plus Jakarta Sans" ], "headline-lg": [ "Plus Jakarta Sans" ], "label-lg": [ "Inter" ], "metric-display": [ "Plus Jakarta Sans" ], "body-lg": [ "Inter" ], "display-hero-mobile": [ "Plus Jakarta Sans" ] }, "fontSize": { "headline-md": [ "22px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "700" } ], "body-md": [ "15px", { "lineHeight": "22px", "fontWeight": "400" } ], "metric-unit": [ "14px", { "lineHeight": "18px", "letterSpacing": "0.04em", "fontWeight": "600" } ], "display-hero": [ "48px", { "lineHeight": "52px", "letterSpacing": "-0.03em", "fontWeight": "800" } ], "label-md": [ "12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600" } ], "headline-lg-mobile": [ "26px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700" } ], "label-caps": [ "11px", { "lineHeight": "14px", "letterSpacing": "0.08em", "fontWeight": "700" } ], "body-sm": [ "13px", { "lineHeight": "18px", "fontWeight": "400" } ], "headline-sm": [ "18px", { "lineHeight": "24px", "fontWeight": "600" } ], "headline-lg": [ "32px", { "lineHeight": "38px", "letterSpacing": "-0.02em", "fontWeight": "700" } ], "label-lg": [ "14px", { "lineHeight": "18px", "letterSpacing": "0.01em", "fontWeight": "600" } ], "metric-display": [ "40px", { "lineHeight": "44px", "letterSpacing": "-0.03em", "fontWeight": "800" } ], "body-lg": [ "17px", { "lineHeight": "26px", "fontWeight": "400" } ], "display-hero-mobile": [ "36px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "800" } ] } } } }</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><header class="fixed top-0 left-0 right-0 h-16 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-50 flex items-center justify-between px-space-lg"><div class="flex items-center gap-space-lg"><div class="flex items-center gap-space-sm"><img alt="Brand logo. - Primary color: #059669
+- Font: plusJakartaSans
+- Mode: light
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1V2lT0OyhRrxsOg38auIcH2z7Okcvlp-UkP6Yw66HmTpM8E8bcXLh8t_11PgdFht6QiX4fQJJf6hHFgIA820Vh2Tg2SjHknQCJPCTMlQQ9oJUdE-5_dEN4BSqMrVaVZWR-IVHvNUHoozLaMM2HYmQlH0gU9Tio2QPBFgaVLZm1N0WWmACtIz9L7OIA3QXJKNXGoMQPfJDhdm7yWwIILs5yJ7417kTvEgAePCqIJoAbMM4ERyGdzpP0F0aeP"><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-primary leading-none tracking-tight">AgriN Enterprise</span><span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider mt-0.5">Agronomy Command Center</span></div></div><div class="hidden xl:flex items-center gap-space-xs pl-space-md border-l border-outline-variant/30"><span class="flex h-2 w-2 rounded-full bg-primary animate-pulse"></span><span class="font-label-md text-label-md text-on-surface-variant">Karnal &amp; Kurukshetra Agronomic Division • Real-time Sentinel-2 &amp; IoT Stream Active</span></div></div><div class="flex items-center gap-space-md flex-1 max-w-xl mx-space-lg"><div class="relative w-full"><span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">search</span><input class="w-full h-10 pl-10 pr-4 rounded-lg bg-surface-container-low font-body-sm text-body-sm text-on-surface placeholder:text-outline border border-outline-variant/40 focus:outline-none focus:border-primary focus:bg-surface-container-lowest transition-all" placeholder="Search farmers, plot cadastral IDs, pathogens, or sensors (Press ‘/’ to focus)..." type="text"></div></div><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs px-space-sm py-1 rounded-full bg-error-container/40 text-on-error-container"><span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-error"></span></span><span class="font-label-caps text-label-caps uppercase text-error font-bold">Outbreaks: 26 Active</span></div><div class="flex items-center gap-space-sm pl-space-sm border-l border-outline-variant/30"><div class="text-right hidden sm:block"><div class="font-label-lg text-label-lg text-on-surface leading-tight">Dr. Ananya Sharma</div><div class="font-label-caps text-label-caps text-on-surface-variant">Lead Agronomist • Karnal</div></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><aside class="fixed left-0 top-16 bottom-0 w-72 bg-surface-container-low/70 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex flex-col justify-between p-space-md"><div class="space-y-space-md"><div class="px-space-sm pt-space-xs"><span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Field Operational Modules</span></div><nav class="space-y-1" data-active-classes="bg-primary text-on-primary font-bold shadow-[0_1px_3px_rgba(15,23,42,0.08)]"><a aria-current="page" class="flex items-center gap-space-sm px-space-md py-3 rounded-lg transition-colors bg-primary text-on-primary font-bold shadow-[0_1px_3px_rgba(15,23,42,0.08)]" data-path="geospatial-command" href="#"><span class="material-symbols-outlined text-[20px]">map</span>Geospatial Command &amp; Map</a><a class="flex items-center gap-space-sm px-space-md py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-lg text-label-lg" data-path="disease-triage-queue" href="#"><span class="material-symbols-outlined text-[20px]">coronavirus</span>Disease Triage Queue</a><a class="flex items-center gap-space-sm px-space-md py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-lg text-label-lg" data-path="farmer-plot-registry" href="#"><span class="material-symbols-outlined text-[20px]">groups</span>Farmer &amp; Plot Registry</a><a class="flex items-center gap-space-sm px-space-md py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-lg text-label-lg" data-path="telemetry-weather-stations" href="#"><span class="material-symbols-outlined text-[20px]">nest_multi_room</span>Telemetry &amp; Weather Stations</a><a class="flex items-center gap-space-sm px-space-md py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-lg text-label-lg" data-path="api-integration-architecture" href="#"><span class="material-symbols-outlined text-[20px]">terminal</span>API &amp; System Architecture</a></nav></div><div class="bg-surface-container-lowest p-space-md rounded-xl shadow-[0_1px_3px_rgba(15,23,42,0.08)]"><div class="flex items-center justify-between mb-space-xs"><span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Field Radio Sync</span><span class="font-label-md text-label-md text-primary font-bold">99.8% Online</span></div><div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden"><div class="bg-primary h-full w-[99.8%]"></div></div><div class="flex items-center justify-between mt-space-sm pt-space-xs text-outline border-t border-outline-variant/20"><span class="font-label-caps text-label-caps">LoRaWAN Hub #04</span><span class="font-label-caps text-label-caps text-primary">Synced 12s ago</span></div></div></aside><div class="pl-72"><main class="w-full pt-16 bg-surface px-space-lg min-h-screen"><div class="flex flex-col w-full">
+<!-- Top Bar Regional Overview KPI Cards -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-md py-space-md"><!-- Active Plots -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/30 transition-all hover:border-outline-variant/60 relative overflow-hidden">
+  <div class="flex items-center justify-between">
+    <span class="font-label-caps text-[11px] text-outline uppercase tracking-wider font-semibold">Active Cadastral Plots</span>
+    <span class="flex items-center text-primary font-label-md text-label-md bg-surface-container-low px-2 py-0.5 rounded-full font-semibold">
+      <span class="material-symbols-outlined text-[13px] mr-0.5">trending_up</span>+3.2%
+    </span>
+  </div>
+  <div class="mt-space-sm flex items-baseline justify-between">
+    <div class="flex items-baseline gap-1.5">
+      <span class="text-[32px] font-headline-lg font-bold text-on-surface tracking-tight leading-none" style="font-variant-numeric: tabular-nums;">7,841</span>
+      <span class="font-label-md text-[13px] text-outline font-medium">plots</span>
+    </div>
+    <svg class="w-20 h-7 text-primary overflow-visible" fill="none" viewBox="0 0 100 36">
+      <path d="M0 28 L16 26 L32 29 L48 18 L64 20 L80 12 L100 8" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+      <path d="M0 28 L16 26 L32 29 L48 18 L64 20 L80 12 L100 8 L100 36 L0 36 Z" fill="currentColor" fill-opacity="0.08"></path>
+    </svg>
+  </div>
+  <div class="mt-space-sm pt-space-xs flex items-center justify-between border-t border-outline-variant/20 text-outline text-[12px]">
+    <span class="font-label-md text-on-surface-variant">Karnal &amp; Kurukshetra</span>
+    <span class="font-label-caps text-[11px] text-primary font-semibold tracking-wide">99.4% Digitized</span>
+  </div>
+</div>
+
+<!-- Outbreak Alerts -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/30 transition-all hover:border-outline-variant/60 relative overflow-hidden">
+  <div class="flex items-center justify-between">
+    <span class="font-label-caps text-[11px] text-error uppercase tracking-wider font-semibold flex items-center gap-1.5">
+      <span class="relative flex h-2 w-2">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-2 w-2 bg-error"></span>
+      </span>
+      Outbreak Alerts
+    </span>
+    <span class="font-label-caps text-[11px] text-error bg-error-container/40 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
+      High Alert
+    </span>
+  </div>
+  <div class="mt-space-sm flex items-baseline justify-between">
+    <div class="flex items-baseline gap-1.5">
+      <span class="text-[32px] font-headline-lg font-bold text-error tracking-tight leading-none" style="font-variant-numeric: tabular-nums;">26</span>
+      <span class="font-label-md text-[13px] text-error font-semibold">hotspots</span>
+    </div>
+    <svg class="w-20 h-7 text-error overflow-visible" fill="none" viewBox="0 0 100 36">
+      <path d="M0 22 L18 20 L36 28 L54 15 L72 18 L90 8 L100 4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+      <path d="M0 22 L18 20 L36 28 L54 15 L72 18 L90 8 L100 4 L100 36 L0 36 Z" fill="currentColor" fill-opacity="0.08"></path>
+    </svg>
+  </div>
+  <div class="mt-space-sm pt-space-xs flex items-center justify-between border-t border-outline-variant/20 text-[12px]">
+    <span class="text-on-surface-variant font-label-md">18 Early Blight</span>
+    <span class="text-error font-semibold font-label-md">8 Stripe Rust</span>
+  </div>
+</div>
+
+<!-- Avg Soil Moisture -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/30 transition-all hover:border-outline-variant/60 relative overflow-hidden">
+  <div class="flex items-center justify-between">
+    <span class="font-label-caps text-[11px] text-outline uppercase tracking-wider font-semibold">Soil Volumetric Moisture</span>
+    <span class="font-label-caps text-[11px] text-tertiary bg-tertiary-fixed px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">Optimal</span>
+  </div>
+  <div class="mt-space-sm flex items-baseline justify-between">
+    <div class="flex items-baseline gap-1.5">
+      <span class="text-[32px] font-headline-lg font-bold text-on-surface tracking-tight leading-none" style="font-variant-numeric: tabular-nums;">58%</span>
+      <span class="font-label-md text-[13px] text-outline font-medium">VWC</span>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <div class="w-1 h-5 rounded-full bg-primary"></div>
+      <div class="w-1 h-6 rounded-full bg-primary"></div>
+      <div class="w-1 h-7 rounded-full bg-primary"></div>
+      <div class="w-1 h-4 rounded-full bg-secondary-container"></div>
+      <div class="w-1 h-3 rounded-full bg-surface-container-high"></div>
+    </div>
+  </div>
+  <div class="mt-space-sm pt-space-xs flex items-center justify-between border-t border-outline-variant/20 text-[12px] text-outline">
+    <span class="font-label-md text-on-surface-variant">4 Agro-Climatic Zones</span>
+    <span class="font-label-caps text-[11px] text-primary font-semibold tracking-wide">Hydrated</span>
+  </div>
+</div>
+
+<!-- Sentinel-2 Refresh -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/30 transition-all hover:border-outline-variant/60 relative overflow-hidden">
+  <div class="flex items-center justify-between">
+    <span class="font-label-caps text-[11px] text-outline uppercase tracking-wider font-semibold">Sentinel-2 Multispectral</span>
+    <span class="flex items-center gap-1 font-label-caps text-[11px] text-primary bg-primary-fixed/40 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
+      <span class="material-symbols-outlined text-[13px]">satellite_alt</span>L2A Active
+    </span>
+  </div>
+  <div class="mt-space-sm flex items-baseline justify-between">
+    <div class="flex items-baseline gap-1.5">
+      <span class="text-[32px] font-headline-lg font-bold text-on-surface tracking-tight leading-none" style="font-variant-numeric: tabular-nums;">42<span class="text-[20px] font-semibold text-outline ml-0.5">m</span></span>
+      <span class="font-label-md text-[13px] text-outline font-medium">ago</span>
+    </div>
+    <span class="material-symbols-outlined text-outline-variant text-[24px]">radar</span>
+  </div>
+  <div class="mt-space-sm pt-space-xs flex items-center justify-between border-t border-outline-variant/20 text-[12px] text-outline">
+    <span class="font-label-md text-on-surface-variant">Next pass: 3h 18m</span>
+    <span class="font-label-caps text-[11px] text-outline font-medium">Cloud: 4.1%</span>
+  </div>
+</div></section>
+<!-- Main Split Geospatial Command Canvas & Right Action Drawer -->
+<div class="flex flex-col lg:flex-row gap-space-md pb-space-xl items-start">
+<!-- Left/Center Canvas: Geospatial PostGIS Map (approx 65% width) -->
+<div class="w-full lg:w-[65%] flex flex-col gap-space-md">
+<!-- Map Container Card -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant/30 overflow-hidden flex flex-col relative">
+<!-- Map Canvas Header & Fast Toggles -->
+<div class="flex flex-wrap items-center justify-between p-space-md bg-surface-container-low/50"><div class="flex items-center gap-space-sm">
+  <div class="w-9 h-9 rounded-lg bg-primary-container/20 flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-primary text-[20px]">public</span>
+  </div>
+  <div>
+    <h2 class="font-headline-sm text-[16px] font-bold text-on-surface tracking-tight leading-tight">Cadastral PostGIS Visualizer</h2>
+    <p class="font-label-md text-[12px] text-outline mt-0.5">Sector Karnal-West • CRS: EPSG:4326 (WGS84) • Scale 1:4500</p>
+  </div>
+</div>
+<div class="flex items-center gap-1.5 mt-2 sm:mt-0 flex-wrap">
+  <button class="bg-primary text-on-primary font-label-caps text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm">
+    <span class="material-symbols-outlined text-[15px]">layers</span>NDVI Heatmap
+  </button>
+  <button class="bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/30 text-on-surface font-label-caps text-[11px] font-semibold uppercase tracking-wider px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+    <span class="material-symbols-outlined text-[15px] text-tertiary">water_drop</span>VWC Isotherms
+  </button>
+  <button class="bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/30 text-on-surface font-label-caps text-[11px] font-semibold uppercase tracking-wider px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+    <span class="material-symbols-outlined text-[15px] text-secondary">filter_vintage</span>False Color IR
+  </button>
+  <button class="bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/30 text-on-surface font-label-caps text-[11px] font-semibold uppercase tracking-wider px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+    <span class="material-symbols-outlined text-[15px] text-outline">router</span>IoT Nodes
+  </button>
+</div></div>
+<!-- Simulated Vector Interactive Map Area -->
+<div class="relative w-full h-[580px] bg-[#142921] overflow-hidden select-none" id="cadastral-viewport">
+<!-- Subtle Agricultural Terrain Grid Overlay -->
+<svg class="absolute inset-0 w-full h-full opacity-15 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<pattern height="40" id="grid-pattern" patternUnits="userSpaceOnUse" width="40">
+<path d="M 40 0 L 0 0 0 40" fill="none" stroke="#68dba9" stroke-dasharray="2 4" stroke-width="0.75"></path>
+</pattern>
+</defs>
+<rect fill="url(#grid-pattern)" height="100%" width="100%"></rect>
+</svg>
+<!-- Irrigation Canal / Road Vectors -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 1000 600">
+<!-- Road -->
+<path d="M -20 180 Q 300 240 600 120 T 1050 90" fill="none" opacity="0.6" stroke="#485c52" stroke-linecap="round" stroke-width="7"></path>
+<path d="M -20 180 Q 300 240 600 120 T 1050 90" fill="none" opacity="0.4" stroke="#faf8ff" stroke-dasharray="6 8" stroke-width="1.5"></path>
+<!-- Secondary Canal -->
+<path d="M 280 -20 Q 320 280 440 620" fill="none" opacity="0.5" stroke="#007bb9" stroke-width="3"></path>
+</svg>
+<!-- Cadastral Polygons (Simulated PostGIS Vectors) -->
+<svg class="absolute inset-0 w-full h-full cursor-crosshair" preserveAspectRatio="none" viewBox="0 0 1000 600">
+<defs>
+<!-- Gradients for healthy and stressed plots -->
+<linearGradient id="grad-healthy" x1="0" x2="1" y1="0" y2="1">
+<stop offset="0%" stop-color="#00855d" stop-opacity="0.65"></stop>
+<stop offset="100%" stop-color="#006948" stop-opacity="0.8"></stop>
+</linearGradient>
+<linearGradient id="grad-stress" x1="0" x2="1" y1="0" y2="1">
+<stop offset="0%" stop-color="#fe932c" stop-opacity="0.55"></stop>
+<stop offset="100%" stop-color="#904d00" stop-opacity="0.75"></stop>
+</linearGradient>
+<linearGradient id="grad-pathogen" x1="0" x2="1" y1="0" y2="1">
+<stop offset="0%" stop-color="#ba1a1a" stop-opacity="0.65"></stop>
+<stop offset="100%" stop-color="#93000a" stop-opacity="0.85"></stop>
+</linearGradient>
+</defs>
+<!-- Plot 1: Healthy (Left Top) -->
+<polygon class="hover:opacity-90 transition-opacity" fill="url(#grad-healthy)" points="40,50 250,30 290,170 80,210" stroke="#68dba9" stroke-width="1.5"></polygon>
+<text fill="#faf8ff" font-family="Inter" font-size="12" font-weight="600" opacity="0.85" x="130" y="120">#KNL-01 (NDVI 0.82)</text>
+<!-- Plot 2: Healthy Canopy (Center Top) -->
+<polygon class="hover:opacity-90 transition-opacity" fill="url(#grad-healthy)" points="320,40 580,20 620,160 350,190" stroke="#68dba9" stroke-width="1.5"></polygon>
+<text fill="#faf8ff" font-family="Inter" font-size="12" font-weight="600" opacity="0.85" x="420" y="105">#KNL-02 (NDVI 0.79)</text>
+<!-- Plot 3: TARGET SELECTED AMBER PLOT (Center) -->
+<!-- Highlight halo -->
+<polygon class="animate-pulse" fill="none" points="120,240 460,200 490,440 220,510 100,410" stroke="#fe932c" stroke-dasharray="8 4" stroke-width="4"></polygon>
+<polygon class="cursor-pointer" fill="url(#grad-stress)" points="120,240 460,200 490,440 220,510 100,410" stroke="#ffdcc3" stroke-width="2"></polygon>
+<!-- Plot 3 NDVI contour rings overlay inside -->
+<path d="M 180 290 Q 300 250 400 280 Q 420 380 340 430 Q 220 460 170 380 Z" fill="#00855d" fill-opacity="0.4" stroke="#85f8c4" stroke-width="1.2"></path>
+<path d="M 230 330 Q 310 300 370 340 Q 370 390 320 410 Q 250 420 220 380 Z" fill="#006948" fill-opacity="0.6" stroke="#85f8c4" stroke-width="1.5"></path>
+<!-- Plot 4: Pathogen Outbreak Red (Right Top) -->
+<polygon class="hover:opacity-90 transition-opacity" fill="url(#grad-pathogen)" points="650,50 930,40 960,240 700,260" stroke="#ffdad6" stroke-width="2"></polygon>
+<text fill="#ffffff" font-family="Inter" font-size="12" font-weight="700" x="770" y="145">#KNL-04 ALERT: Rust</text>
+<!-- Plot 5: Moderate Healthy (Right Bottom) -->
+<polygon class="hover:opacity-90 transition-opacity" fill="url(#grad-healthy)" points="530,220 890,290 850,530 520,480" stroke="#68dba9" stroke-width="1.5"></polygon>
+<text fill="#faf8ff" font-family="Inter" font-size="12" font-weight="600" opacity="0.85" x="660" y="390">#KNL-05 (NDVI 0.77)</text>
+<!-- Plot 6: Healthy Pasture (Bottom Left) -->
+<polygon fill="url(#grad-healthy)" opacity="0.6" points="50,440 190,530 140,580 30,570" stroke="#68dba9" stroke-width="1"></polygon>
+<!-- High-risk hotspot circle marker in Plot 3 Sector C -->
+<circle cx="280" cy="420" fill="#ba1a1a" fill-opacity="0.3" r="28" stroke="#ba1a1a" stroke-dasharray="3 3" stroke-width="1.5"></circle>
+<circle cx="280" cy="420" fill="#ba1a1a" r="9" stroke="#ffffff" stroke-width="2"></circle>
+<circle class="animate-ping" cx="280" cy="420" fill="none" r="18" stroke="#ba1a1a" stroke-width="1.5" style="animation-duration: 2.2s;"></circle>
+<!-- Sensor Node Markers -->
+<g transform="translate(340, 310)">
+<circle cx="0" cy="0" fill="#007bb9" r="8" stroke="#ffffff" stroke-width="2"></circle>
+<text fill="#cce5ff" font-family="Inter" font-size="10" font-weight="700" x="12" y="4">IoT #NODE-88</text>
+</g>
+<g transform="translate(730, 180)">
+<circle cx="0" cy="0" fill="#ba1a1a" r="8" stroke="#ffffff" stroke-width="2"></circle>
+<text fill="#ffdcc3" font-family="Inter" font-size="10" font-weight="700" x="12" y="4">IoT #NODE-92</text>
+</g>
+</svg>
+<!-- Floating Map HUD Overlays -->
+<!-- North Compass & Lat/Long HUD (Top Right) -->
+<div class="absolute top-space-md right-space-md flex flex-col items-end gap-space-xs pointer-events-none">
+<div class="w-10 h-10 rounded-full bg-surface-container-lowest/90 backdrop-blur shadow-md flex items-center justify-center pointer-events-auto">
+<span class="material-symbols-outlined text-error text-[24px]">explore</span>
+</div>
+<div class="bg-inverse-surface/85 backdrop-blur text-inverse-on-surface px-space-sm py-1 rounded-md font-label-caps text-label-caps tracking-wider shadow">
+              29°41'24.8"N 76°59'04.2"E
+            </div>
+</div>
+<!-- Zoom & Selection Tools (Top Left) -->
+<div class="absolute top-space-md left-space-md flex flex-col gap-1 bg-surface-container-lowest/90 backdrop-blur rounded-lg p-1 shadow-md">
+<button class="w-8 h-8 rounded flex items-center justify-center text-on-surface hover:bg-surface-container-high transition-colors" title="Zoom In">
+<span class="material-symbols-outlined text-[18px]">add</span>
+</button>
+<button class="w-8 h-8 rounded flex items-center justify-center text-on-surface hover:bg-surface-container-high transition-colors" title="Zoom Out">
+<span class="material-symbols-outlined text-[18px]">remove</span>
+</button>
+<button class="w-8 h-8 rounded flex items-center justify-center text-on-surface hover:bg-surface-container-high transition-colors" title="Draw Cadastral Boundary">
+<span class="material-symbols-outlined text-[18px]">draw</span>
+</button>
+<button class="w-8 h-8 rounded flex items-center justify-center text-primary hover:bg-surface-container-high transition-colors" title="Locate Division Centroid">
+<span class="material-symbols-outlined text-[18px]">my_location</span>
+</button>
+</div>
+<!-- Callout Pin Over Plot #3 -->
+<div class="absolute top-[280px] left-[240px] pointer-events-none transform -translate-x-1/2 -translate-y-full">
+<div class="bg-surface-container-lowest/95 backdrop-blur-md px-space-sm py-1.5 rounded-lg shadow-lg flex items-center gap-space-xs pointer-events-auto">
+<span class="w-2.5 h-2.5 rounded-full bg-secondary-container animate-pulse"></span>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">Selected: Plot #3</span>
+<span class="font-body-sm text-body-sm text-secondary font-semibold">Stress VWC 24.8% • NDVI 0.74</span>
+</div>
+</div>
+<div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-surface-container-lowest mx-auto"></div>
+</div>
+<!-- Live Sentinel NDVI Field Raster Preview PIP (Bottom Left) matching reference image layout -->
+<div class="absolute bottom-space-md left-space-md w-72 sm:w-80 bg-inverse-surface/95 backdrop-blur-md rounded-xl p-space-sm text-inverse-on-surface shadow-2xl">
+<div class="flex items-center justify-between pb-space-xs">
+<div class="flex items-center gap-1.5">
+<span class="flex h-2 w-2 rounded-full bg-primary-fixed"></span>
+<span class="font-label-caps text-label-caps text-inverse-on-surface uppercase font-bold tracking-wide">Plot 3 • Live Satellite Feed</span>
+</div>
+<span class="font-label-caps text-label-caps text-outline-variant">Sentinel-2B</span>
+</div>
+<!-- Embedded NDVI multispectral graphic from visual guidance -->
+<div class="relative w-full h-32 rounded-lg overflow-hidden bg-primary-container/20 flex items-center justify-center">
+<img class="w-full h-full object-cover" data-alt="High-resolution multispectral false-color NDVI satellite field scan of agricultural plots showing emerald green photosynthetic vigor gradient zones with amber moisture stress pockets and cadastral contour overlays, top-down agronomy command visualization." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAlpFSFxmMf0wnhp6PIQ2HwAXXu-JG5ajAhCWAqTk8uXUQeISSBQxSTBAK7tPbsyX6QTW7NeziwYAQ-eHj-EvZTctvuQBbWJDlhDSN3IqGRnBJEoxlZQVBev5F4zeoGggzJs2nYjicvIh9qVfFBAN_x97807Cg5lHrQ654TyzuN81R_XuA3Eqcs07cIBMekK8KXFaraav1iv3RdMmmwo5UE8ynkwxPLcWmk5Adbg6yItQgxfTYlMrDLEg">
+<!-- Segmented NDVI Badge on Top of PIP image -->
+<div class="absolute top-2 right-2 bg-inverse-surface/80 px-2 py-0.5 rounded text-white font-label-md text-label-md flex items-center gap-1">
+<span class="">NDVI</span>
+<span class="font-bold text-primary-fixed">0.74</span>
+</div>
+<!-- Hotspot pip alert badge -->
+<div class="absolute bottom-2 left-2 bg-error/90 backdrop-blur text-white px-2 py-0.5 rounded text-label-caps font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">warning</span>Stress 0.42 (Sec C)
+              </div>
+</div>
+<!-- Gradient Scale Bar -->
+<div class="mt-space-xs flex items-center gap-2 text-inverse-on-surface">
+<span class="font-label-caps text-label-caps">NDVI</span>
+<div class="flex-1 h-2 rounded-full bg-gradient-to-r from-error via-secondary-container to-primary-fixed overflow-hidden"></div>
+<span class="font-label-caps text-label-caps font-bold text-primary-fixed">0.82 Avg</span>
+</div>
+</div>
+<!-- Map Legend (Bottom Right) -->
+<div class="absolute bottom-space-md right-space-md bg-surface-container-lowest/90 backdrop-blur-md px-space-md py-space-sm rounded-lg shadow text-on-surface font-label-md text-label-md hidden sm:flex flex-col gap-1">
+<span class="font-label-caps text-label-caps text-outline uppercase pb-0.5">Cadastral Classification</span>
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded bg-primary"></span>
+<span class="">Optimal Canopy (NDVI &gt; 0.75)</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded bg-secondary-container"></span>
+<span class="">Hydrologic Stress (VWC &lt; 25%)</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded bg-error"></span>
+<span class="">Active Pathogen Outbreak</span>
+</div>
+</div>
+</div>
+<!-- Geospatial Bottom Metric Strip -->
+<div class="p-space-md bg-surface-container-low flex flex-wrap items-center justify-between text-on-surface-variant font-body-sm text-body-sm gap-2">
+<div class="flex items-center gap-space-lg flex-wrap">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px] text-primary">satellite</span>
+<span class="">Resolution: <strong>10m Pixel Multispectral</strong></span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px] text-tertiary">water</span>
+<span class="">Root Evapotranspiration: <strong>3.8 mm/day</strong></span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px] text-secondary">thermostat</span>
+<span class="">Soil Surface Temp: <strong>26.4°C</strong></span>
+</div>
+</div>
+<button class="text-primary font-label-md text-label-md hover:underline flex items-center gap-1">
+<span class="">Export GeoJSON Layer</span>
+<span class="material-symbols-outlined text-[16px]">download</span>
+</button>
+</div>
+</div>
+<!-- Quick Action Regional Batch Broadcast Bar -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/30 flex flex-col sm:flex-row items-center justify-between gap-space-md"><div class="flex items-center gap-space-sm">
+  <div class="w-10 h-10 rounded-xl bg-primary-container/20 flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-primary text-[20px]">sensors</span>
+  </div>
+  <div>
+    <h4 class="font-headline-sm text-[15px] font-bold text-on-surface tracking-tight">Karnal North Sector Automated Irrigation Loop</h4>
+    <p class="font-label-md text-[13px] text-outline mt-0.5">74 Solenoid valves ready for scheduled dawn cycle • Gateway RSSI: -84dBm</p>
+  </div>
+</div>
+<div class="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+  <button class="flex-1 sm:flex-none border border-outline-variant/30 bg-surface-container-low hover:bg-surface-container-high text-on-surface font-label-md text-[13px] font-semibold px-4 py-2 rounded-lg transition-colors">
+    Override Schedule
+  </button>
+  <button class="flex-1 sm:flex-none bg-primary hover:bg-primary-container text-on-primary font-label-md text-[13px] font-semibold px-4 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-sm">
+    <span class="material-symbols-outlined text-[16px]">play_circle</span>Run Diagnostics
+  </button>
+</div></div>
+</div>
+<!-- Right-Hand Sliding Quick Drawer: Plot Detail & Rapid Agronomic Action (35% width) -->
+<aside class="w-full lg:w-[35%] flex flex-col gap-space-md">
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant/30 p-space-lg flex flex-col gap-space-md relative">
+<!-- Drawer Header with Status -->
+<div class="flex items-start justify-between"><div class="flex flex-col">
+  <div class="flex items-center gap-2">
+    <span class="font-label-caps text-[11px] text-primary uppercase font-bold tracking-wider">Agronomic Fast Action</span>
+    <span class="bg-secondary-fixed text-on-secondary-fixed-variant font-label-caps text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+      Amber Alert
+    </span>
+  </div>
+  <h3 class="font-headline-md text-[20px] font-bold text-on-surface mt-1 tracking-tight" style="font-variant-numeric: tabular-nums;">Plot #KNL-PLOT-03</h3>
+  <span class="font-label-md text-[12px] text-outline mt-0.5">Cadastral Ref: HR-KNL-2024-00892 • Zone 2A</span>
+</div>
+<button class="w-8 h-8 rounded-lg border border-outline-variant/30 hover:bg-surface-container-high text-outline hover:text-on-surface flex items-center justify-center transition-colors" title="Close drawer view">
+  <span class="material-symbols-outlined text-[16px]">close</span>
+</button></div>
+<!-- Farmer Profile Snippet -->
+<div class="p-space-md rounded-xl bg-surface-container-low flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<img class="w-12 h-12 rounded-full object-cover" data-alt="Close up profile portrait of Indian farmer Ramesh Patel wearing traditional turban in sunlit fertile wheat farm in Haryana, genuine expression, realistic photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDCitmK_9U00Hq6WYMIUzzicTGrdItCMoC6k9Mrj40xcXiWe_sUoRjwIJt0thZaJIJ1EYaac5TMBkp7yRJp3KXMYFFH2Xn7jdYyadrgb1SH0ZlRPKgBC8GrMjqlTCRyzcvCHkXxs5TC8ypKNqfyk43Z0ToYtplfg1JGklQVaV75XSddZH3kW2QUcWhmwmcE76mmSqijwMNqvGISoD1UWRHT20bVrGwD6xnRB5FC96vB5urWLu8hzjZjaA">
+<div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface leading-snug">Ramesh Patel</h4>
+<p class="font-body-sm text-body-sm text-outline">Progressive Wheat Grower • 4.2 Hectares</p>
+</div>
+</div>
+<span class="w-3 h-3 rounded-full bg-primary" title="Farmer Active On Mobile"></span>
+</div>
+<!-- Direct Communication Buttons -->
+<div class="grid grid-cols-2 gap-space-xs pt-space-xs">
+<a class="flex items-center justify-center gap-1.5 py-2 px-space-sm rounded-lg bg-surface-container-lowest text-on-surface hover:bg-surface-container-high font-label-md text-label-md transition-colors shadow-sm" href="tel:+919876543210">
+<span class="material-symbols-outlined text-primary text-[18px]">call</span>
+<span class="">+91 98765-43210</span>
+</a>
+<a class="flex items-center justify-center gap-1.5 py-2 px-space-sm rounded-lg bg-[#25D366]/10 text-[#075E54] hover:bg-[#25D366]/20 font-label-md text-label-md transition-colors shadow-sm font-semibold" href="#">
+<span class="material-symbols-outlined text-[18px]">chat</span>
+<span class="">WhatsApp Alert</span>
+</a>
+</div>
+</div>
+<!-- Agronomic Crop Status Details -->
+<div class="grid grid-cols-2 gap-space-sm">
+<div class="p-space-sm bg-surface-container-low rounded-lg">
+<span class="font-label-caps text-label-caps text-outline uppercase">Active Cultivar</span>
+<div class="font-label-lg text-label-lg text-on-surface font-bold mt-0.5">Sonalika Wheat (PBW-502)</div>
+<span class="font-body-sm text-body-sm text-primary">Sown 42d ago (Vegetative)</span>
+</div>
+<div class="p-space-sm bg-surface-container-low rounded-lg">
+<span class="font-label-caps text-label-caps text-outline uppercase">Expected Harvest</span>
+<div class="font-label-lg text-label-lg text-on-surface font-bold mt-0.5">April 12, 2025</div>
+<span class="font-body-sm text-body-sm text-outline">Target: 52 Qtl/Ha</span>
+</div>
+</div>
+<!-- Telemetry Gauges Section -->
+<div class="space-y-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface uppercase tracking-wider font-bold">Field Sensor Diagnostics</span>
+<span class="font-label-md text-label-md text-primary flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>Station #IoT-88 Synced
+            </span>
+</div>
+<!-- Gauge 1: Canopy NDVI with graduated 5-step scale -->
+<div class="p-space-sm bg-surface-container-low rounded-lg flex flex-col gap-1">
+<div class="flex items-center justify-between font-label-md text-label-md">
+<span class="text-on-surface font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-primary">eco</span>Canopy NDVI Index
+              </span>
+<span class="font-metric-display text-[18px] text-primary font-bold">0.74 <span class="text-label-caps text-outline">/ 1.00</span></span>
+</div>
+<!-- Segmented 5-step scale -->
+<div class="grid grid-cols-5 gap-1 h-2 rounded-full overflow-hidden mt-1">
+<div class="bg-error"></div>
+<div class="bg-secondary-container"></div>
+<div class="bg-[#eab308]"></div>
+<div class="bg-primary-container"></div>
+<div class="bg-primary opacity-30"></div>
+</div>
+<div class="flex justify-between text-outline font-label-caps text-label-caps mt-0.5">
+<span class="">Severe Depletion</span>
+<span class="">Threshold: 0.70</span>
+<span class="text-primary font-bold">Optimal Peak</span>
+</div>
+</div>
+<!-- Gauge 2: Root Zone Soil Volumetric Water Content -->
+<div class="p-space-sm bg-surface-container-low rounded-lg flex flex-col gap-1">
+<div class="flex items-center justify-between font-label-md text-label-md">
+<span class="text-on-surface font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-secondary">water_loss</span>Root Zone Moisture (15-30cm)
+              </span>
+<span class="font-metric-display text-[18px] text-secondary font-bold">24.8% <span class="text-label-caps text-error font-bold">DEFICIT</span></span>
+</div>
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden mt-1">
+<div class="bg-secondary-container h-full w-[38%] rounded-full"></div>
+</div>
+<div class="flex justify-between text-outline font-label-caps text-label-caps mt-0.5">
+<span class="text-error font-bold">Wilting Pt 18%</span>
+<span class="text-on-surface">Current: 24.8%</span>
+<span class="">Field Cap 45%</span>
+</div>
+</div>
+<!-- Gauge 3: Ambient Weather at Micro-parcel -->
+<div class="grid grid-cols-2 gap-space-sm">
+<div class="p-space-sm bg-surface-container-low rounded-lg flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-secondary text-[24px]">thermostat</span>
+<div>
+<span class="font-label-caps text-label-caps text-outline uppercase">Ambient Temp</span>
+<div class="font-headline-sm text-headline-sm text-on-surface">28.2°C</div>
+</div>
+</div>
+<div class="p-space-sm bg-surface-container-low rounded-lg flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-tertiary text-[24px]">humidity_percentage</span>
+<div>
+<span class="font-label-caps text-label-caps text-outline uppercase">Canopy RH</span>
+<div class="font-headline-sm text-headline-sm text-on-surface">62% RH</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Active Advisory on File Card with Audio Diagnostic Player -->
+<div class="p-space-md rounded-xl bg-surface-container-low border-l-4 border-l-secondary-container flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-secondary uppercase font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">assignment_late</span>Active Extension Advisory
+            </span>
+<span class="font-label-caps text-label-caps text-outline">Generated today 08:30 AM</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-relaxed">
+            “Reduce midday furrow evaporation loss. Urgent: Apply preventive copper fungicide spray on <strong>Sector C</strong> (0.8 Ha) due to 62% canopy relative humidity promoting initial mycelial spore establishment.”
+          </p>
+<!-- Field Audio Accessibility Voice Note -->
+<div class="flex items-center justify-between bg-surface-container-lowest p-space-xs px-space-sm rounded-full shadow-sm mt-1">
+<div class="flex items-center gap-space-xs">
+<button class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center hover:opacity-90 transition-opacity" title="Play Voice Advisory (Hindi &amp; Punjabi)">
+<span class="material-symbols-outlined text-[18px]">play_arrow</span>
+</button>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Agronomist Audio Memo</span>
+<span class="font-label-caps text-label-caps text-outline">Hindi • 0:48 min</span>
+</div>
+</div>
+<!-- Waveform Simulation -->
+<div class="flex items-center gap-0.5 h-4 px-2">
+<span class="w-0.5 h-2 bg-primary rounded-full"></span>
+<span class="w-0.5 h-3.5 bg-primary rounded-full"></span>
+<span class="w-0.5 h-4 bg-primary rounded-full"></span>
+<span class="w-0.5 h-2 bg-primary rounded-full"></span>
+<span class="w-0.5 h-3 bg-primary rounded-full"></span>
+<span class="w-0.5 h-1.5 bg-outline rounded-full"></span>
+</div>
+</div>
+</div>
+<!-- Extension Officer Quick Action Bar -->
+<div class="flex flex-col gap-space-xs pt-space-xs">
+<button class="w-full h-12 bg-primary text-on-primary font-label-lg text-label-lg rounded-xl flex items-center justify-center gap-space-xs shadow-md hover:bg-primary-container transition-all active:scale-[0.99]">
+<span class="material-symbols-outlined text-[20px]">send</span>
+<span class="">Broadcast Push Advisory to Farmer</span>
+</button>
+<div class="grid grid-cols-2 gap-space-xs">
+<button class="h-11 bg-surface-container-high text-on-surface font-label-md text-label-md rounded-xl flex items-center justify-center gap-1.5 hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[18px] text-tertiary">flight_takeoff</span>
+<span class="">Trigger Drone Scan</span>
+</button>
+<button class="h-11 bg-surface-container-high text-on-surface font-label-md text-label-md rounded-xl flex items-center justify-center gap-1.5 hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[18px] text-error">assignment_return</span>
+<span class="">Open in Triage Queue</span>
+</button>
+</div>
+</div>
+<!-- Audit Trail Footer -->
+<div class="pt-space-xs flex items-center justify-between text-outline font-label-caps text-label-caps">
+<span class="">Cadastral Sync: PostGIS v3.4</span>
+<span class="">Validated by Dr. Ananya Sharma</span>
+</div>
+</div>
+</aside>
+</div>
+</div>
+<script>
+  // Interactive micro-interactions for cadastral map controls
+  document.addEventListener('DOMContentLoaded', () => {
+    const mapViewport = document.getElementById('cadastral-viewport');
+    if (mapViewport) {
+      mapViewport.querySelectorAll('polygon').forEach(poly => {
+        poly.addEventListener('mouseenter', () => {
+          poly.style.filter = 'drop-shadow(0 0 6px rgba(104, 219, 169, 0.6))';
+        });
+        poly.addEventListener('mouseleave', () => {
+          poly.style.filter = 'none';
+        });
+      });
+    }
+  });
+</script></main></div>
+
+
+<!-- AgriN Universal Interactive Runtime Layer -->
+<div id="agrin-toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 999999; display: flex; flex-direction: column; gap: 8px; pointer-events: none;"></div>
+
+<script>
+(function() {
+  console.log('[AgriN] Interactive runtime active.');
+
+  // Toast System
+  window.showAgriToast = function(message, type = 'success') {
+    const container = document.getElementById('agrin-toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.style.cssText = 'pointer-events: auto; padding: 12px 18px; border-radius: 12px; font-family: Inter, sans-serif; font-size: 13px; font-weight: 600; color: #fff; display: flex; items-center; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); transition: all 0.3s ease; transform: translateY(-10px); opacity: 0;';
+    
+    if (type === 'success') {
+      toast.style.backgroundColor = '#006948';
+      toast.style.border = '1px solid #68dba9';
+      toast.innerHTML = '<span>✅ ' + message + '</span>';
+    } else if (type === 'warn') {
+      toast.style.backgroundColor = '#904d00';
+      toast.style.border = '1px solid #fe932c';
+      toast.innerHTML = '<span>⚠️ ' + message + '</span>';
+    } else {
+      toast.style.backgroundColor = '#131b2e';
+      toast.style.border = '1px solid #3d4a42';
+      toast.innerHTML = '<span>ℹ️ ' + message + '</span>';
+    }
+
+    container.appendChild(toast);
+    requestAnimationFrame(() => {
+      toast.style.transform = 'translateY(0)';
+      toast.style.opacity = '1';
+    });
+
+    setTimeout(() => {
+      toast.style.transform = 'translateY(-10px)';
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    }, 3800);
+  };
+
+  // Web Speech API Voice Synthesis
+  window.speakAgriVoice = function(text) {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+      showAgriToast('Playing voice advisory via Web Speech audio...', 'info');
+    } else {
+      showAgriToast('Audio synthesized: ' + text.slice(0, 50) + '...', 'info');
+    }
+  };
+
+  // Wire up all navigation links
+  document.addEventListener('DOMContentLoaded', function() {
+    const routeMap = {'plots': '/stitch/home_farm_digital_twin/code.html', 'health': '/stitch/home_farm_digital_twin/code.html', 'advisories': '/stitch/home_farm_digital_twin/code.html', 'scan-ai': '/stitch/crop_disease_doctor/code.html', 'scan': '/stitch/crop_disease_doctor/code.html', 'what-if': '/stitch/what_if_simulator/code.html', 'whatif': '/stitch/what_if_simulator/code.html', 'sync': '/stitch/offline_mode_data_sync/code.html', 'offline': '/stitch/offline_mode_data_sync/code.html', 'geospatial-command': '/stitch/geospatial_command_triage_drawer/code.html', 'geospatial': '/stitch/geospatial_command_triage_drawer/code.html', 'disease-triage-queue': '/stitch/disease_triage_queue/code.html', 'triage': '/stitch/disease_triage_queue/code.html', 'farmer-plot-registry': '/stitch/farmer_plot_management_directory/code.html', 'registry': '/stitch/farmer_plot_management_directory/code.html', 'telemetry-weather-stations': '/stitch/telemetry_weather_stations/code.html', 'weather': '/stitch/telemetry_weather_stations/code.html', 'api-integration-architecture': '/stitch/backend_api_integration_architecture/code.html', 'api': '/stitch/backend_api_integration_architecture/code.html'};
+
+    document.querySelectorAll('a, button').forEach(el => {
+      const path = el.getAttribute('data-path');
+      const href = el.getAttribute('href');
+      const text = el.innerText ? el.innerText.trim().toLowerCase() : '';
+
+      // Fix navigation paths
+      if (path && routeMap[path]) {
+        el.setAttribute('href', routeMap[path]);
+        el.addEventListener('click', function(e) {
+          e.preventDefault();
+          window.location.href = routeMap[path];
+        });
+      } else if (href === '#' || !href) {
+        if (text.includes('disease triage') || text.includes('triage queue')) {
+          el.onclick = () => window.location.href = routeMap['disease-triage-queue'];
+        } else if (text.includes('farmer') && text.includes('plot')) {
+          el.onclick = () => window.location.href = routeMap['farmer-plot-registry'];
+        } else if (text.includes('geospatial') || text.includes('command')) {
+          el.onclick = () => window.location.href = routeMap['geospatial-command'];
+        } else if (text.includes('weather') || text.includes('telemetry')) {
+          el.onclick = () => window.location.href = routeMap['telemetry-weather-stations'];
+        } else if (text.includes('api') || text.includes('architecture')) {
+          el.onclick = () => window.location.href = routeMap['api-integration-architecture'];
+        } else if (text.includes('scan')) {
+          el.onclick = () => window.location.href = routeMap['scan-ai'];
+        } else if (text.includes('what-if') || text.includes('what if')) {
+          el.onclick = () => window.location.href = routeMap['what-if'];
+        } else if (text.includes('sync') || text.includes('offline')) {
+          el.onclick = () => window.location.href = routeMap['sync'];
+        }
+      }
+
+      // Action button listeners
+      if (text.includes('broadcast push') || text.includes('broadcast advisory')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          showAgriToast('Advisory broadcasted to Ramesh Patel via WhatsApp & SMS (Twilio gateway)!', 'success');
+        };
+      } else if (text.includes('trigger drone scan')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          showAgriToast('Multispectral drone flight dispatched to Sector 4B (Altitude: 45m).', 'info');
+        };
+      } else if (text.includes('confirm diagnosis') || text.includes('approve prescription')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          el.innerText = '✅ Confirmed by Officer';
+          el.style.backgroundColor = '#006948';
+          el.style.color = '#fff';
+          showAgriToast('Diagnosis confirmed! Prescription locked and synced to farmer digital twin.', 'success');
+        };
+      } else if (text.includes('override') || text.includes('reclassify')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          el.innerText = '⚠️ Overridden';
+          el.style.backgroundColor = '#904d00';
+          el.style.color = '#fff';
+          showAgriToast('Disease classification overridden by Extension Officer.', 'warn');
+        };
+      } else if (text.includes('listen audio') || text.includes('voice memo') || el.title?.includes('Voice')) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          speakAgriVoice("Namaste Ramesh Patel. Crop health NDVI is zero point seven four. Reduce midday furrow evaporation. Apply preventive copper fungicide spray on Sector C due to high canopy humidity.");
+        };
+      } else if (text.includes('sync') && (text.includes('force') || text.includes('now') || text.includes('telemetry'))) {
+        el.onclick = (e) => {
+          e.preventDefault();
+          showAgriToast('Syncing with AgriN Cloud & Sentinel-2 multispectral pipeline...', 'info');
+          setTimeout(() => {
+            showAgriToast('Sync Complete! 7,841 plots and 3 offline submissions updated.', 'success');
+          }, 1200);
+        };
+      }
+    });
+
+    // Make map SVG / polygon elements clickable
+    document.querySelectorAll('polygon, path').forEach(poly => {
+      poly.style.cursor = 'pointer';
+      poly.addEventListener('click', function() {
+        showAgriToast('Plot Selected: Cadastral Sector 4B (Sonalika Wheat PBW-502). NDVI: 0.74, Moisture: 24.8%.', 'info');
+      });
+    });
+  });
+})();
+</script>
+
+<script src="/stitch/agrin-nav.js"></script></body></html>
